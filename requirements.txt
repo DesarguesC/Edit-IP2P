@@ -1,5 +1,4 @@
-basicsr==1.4.2
-albumentations==0.4.3
+albumentations
 diffusers==0.11.1
 pytorch_lightning==1.5.9
 opencv-python
@@ -32,10 +31,7 @@ onnx
 webdataset==0.2.35
 safetensors==0.3.0
 timm
--e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
--e git+https://github.com/openai/CLIP.git@main#egg=clip
 datasets==2.8.0
 seaborn
 openai
-git+https://github.com/crowsonkb/k-diffusion.git
--e git+https://github.com/facebookresearch/segment-anything.git@main#egg=segment-anything
+basicsr==1.4.2

@@ -10,7 +10,6 @@ dependencies:
   - torchvision=0.12.0
   - numpy=1.19.2
   - pip:
-    - basicsr==1.4.2
     - albumentations==0.4.3
     - diffusers==0.11.1
     - pytorch_lightning==1.5.9
@@ -48,7 +47,7 @@ dependencies:
     - webdataset==0.2.35
     - safetensors==0.3.0
     - timm
+    - basicsr==1.4.2
+    - -e git+https://github.com/facebookresearch/segment-anything.git@main#egg=segment-anything
     - -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
     - -e git+https://github.com/openai/CLIP.git@main#egg=clip
-    - git+https://github.com/crowsonkb/k-diffusion.git
-    - -e git+https://github.com/facebookresearch/segment-anything.git@main#egg=segment-anything
