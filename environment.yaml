@@ -39,7 +39,6 @@ dependencies:
     - open-clip-torch
     - jieba
     - ninja
-    - flash-attn --no-build-isolation
     - pycocotools
     - IPython
     - matplotlib
