@@ -22,12 +22,10 @@ sys.path.append("./stable_diffusion")
 
 from stable_diffusion.ldm.util import instantiate_from_config
 
-sam_checkpoint = "../../SAM/sam_vit_h_4b8939.pth"
-model_type = "vit_h"
+
 device = "cuda"
 
-if not os.path.isfile(sam_checkpoint):
-    raise NotImplememtException('no such file')
+
 
     
 def str2bool(v):
@@ -97,6 +95,12 @@ def main():
     parser.add_argument("--seed", type=int)
     parser.add_argument("--SAMldm", type=str2bool, default=False)
     parser.add_argument("--reverse", type=str2bool, default=True)
+    parser.add_argument("--sam-ckpt", default="../SAM/sam_vit_h_4b8939.pth", type=str)
+    parser.add_argument("--sam-type", default="vit_h", type=str)
+    
+    
+    
+    
     args = parser.parse_args()
 
     config = OmegaConf.load(args.config)
@@ -133,6 +137,9 @@ def main():
 
         sigmas = model_wrap.get_sigmas(args.steps)
         
+        if not os.path.isfile(args.sam-ckpt):
+            raise NotImplememtException('no such file')
+        
         # SAM in latent space
         from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
         
@@ -142,7 +149,7 @@ def main():
             name_list = name_list[-1].split('.')
             name = name_list[0]
             
-            sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+            sam = sam_model_registry[args.sam-type](checkpoint=args.sam-ckpt)
             sam.to(device=device)
             mask_generator = SamAutomaticMaskGenerator(sam)
             masks = mask_generator.generate(np_image)
