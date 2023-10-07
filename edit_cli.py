@@ -137,7 +137,7 @@ def main():
 
         sigmas = model_wrap.get_sigmas(args.steps)
         
-        if not os.path.isfile(args.sam-ckpt):
+        if not os.path.isfile(args.sam_ckpt):
             raise NotImplememtException('no such file')
         
         # SAM in latent space
@@ -149,7 +149,7 @@ def main():
             name_list = name_list[-1].split('.')
             name = name_list[0]
             
-            sam = sam_model_registry[args.sam-type](checkpoint=args.sam-ckpt)
+            sam = sam_model_registry[args.sam_type](checkpoint=args.sam_ckpt)
             sam.to(device=device)
             mask_generator = SamAutomaticMaskGenerator(sam)
             masks = mask_generator.generate(np_image)
