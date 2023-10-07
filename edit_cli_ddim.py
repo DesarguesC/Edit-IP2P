@@ -20,7 +20,7 @@ from basicsr.utils import tensor2img
 
 from stable_diffusion.ldm.inference_base import (diffusion_inference, get_base_argument_parser, get_sd_models, str2bool)
 from stable_diffusion.ldm.models.diffusion.ddim_edit import DDIMSampler
-from stable_diffusion.ldm.util_ddim import instantiate_from_config, get_resize_shape
+from stable_diffusion.ldm.util_ddim import instantiate_from_config, get_resize_shape, load_img
 from stable_diffusion.ldm.util_ddim import DEFAULT_NEGATIVE_PROMPT as DNP
 
 
@@ -91,14 +91,16 @@ def main():
 
 
     seed = random.randint(0, 100000) if args.seed is None else args.seed
-    input_image = Image.open(args.input).convert("RGB")
-    width, height = input_image.size
-    width, height = get_resize_shape((width, height), max_resolution=args.max_resolution, \
-                                     resize_short_edge=args.resize_short_edge, downsample_factor=args.f)
-    args.W, args.H = width, height
-    input_image = ImageOps.fit(input_image, (width, height), method=Image.Resampling.LANCZOS)
+    
+    input_img, args = 
+    # input_image = Image.open(args.input).convert("RGB")
+    # width, height = input_image.size
+    # width, height = get_resize_shape((width, height), max_resolution=args.max_resolution, \
+    #                                  resize_short_edge=args.resize_short_edge, downsample_factor=args.f)
+    # args.W, args.H = width, height
+    # input_image = ImageOps.fit(input_image, (width, height), method=Image.Resampling.LANCZOS)
 
-    # print(input_image.size)
+    print(input_image.size)    # check
 
     if args.edit_prompt == "":
         input_image.save(args.output)
@@ -107,8 +109,11 @@ def main():
     with torch.no_grad(), autocast("cuda"), model.ema_scope():
         cond = {}
         cond["c_crossattn"] = model.get_learned_conditioning([args.edit_prompt])
-        input_image = 2 * torch.tensor(np.array(input_image)).float() / 255 - 1
-        input_image = rearrange(input_image, "h w c -> 1 c h w").to(model.device)
+        input_image, args = load_img(args)
+        # input_image = rearrange(input_image, "h w c -> 1 c h w").to(model.device)
+        assert (input_image.shape) == 4
+        assert input_image.shape = (1,args.C, args.H, args.W) or input_image.shape = (1,args.C, args.W, args.H), f'Wrongly shaped input_image as {input_image.shape}'
+        
         cond["c_concat"] = model.encode_first_stage(input_image).mode()    # .mode() -> ?
         assert cond['c_concat'] is not None
 

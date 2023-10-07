@@ -225,3 +225,39 @@ def fix_cond_shapes(model, prompt_condition, uc):
     while prompt_condition.shape[1] < uc.shape[1]:
         prompt_condition = torch.cat((prompt_condition, null_cond.repeat((prompt_condition.shape[0], 1, 1))), axis=1)
     return prompt_condition, uc
+
+
+
+
+
+def load_img(opt):
+    
+    assert opt.f != None
+    assert opt.f > 0, f'downsample factor = {opt.f}'
+    
+    path = opt.input
+    assert os.path.isfile(path), f'input image path = {path}, file not exists.'
+    resize_short_edge = opt.resize_short_edge
+    max_resolution = opt.max_resolution
+    
+    image = Image.open(path).convert("RGB")
+    w, h = image.size   # check
+    assert 0, f'image.size={image.size}'
+    
+    h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge, downsample_factor=opt.f)
+    print(f"loaded input image of size ({w}, {h}) from {path}")
+
+    image = np.asarray(image, dtype=np.float32)
+    opt.W = (int)(w)
+    opt.H = (int)(h)
+    
+    image = cv2.resize(image, (w,h), interpolation=cv2.INTER_LANCZOS4)
+    
+    image = np.array(image).astype(np.float32) / 255.0
+    # print('before transpose: ', image.shape)
+    image = image[None].transpose(0, 3, 2, 1)
+    image = torch.from_numpy(image)
+    print(image.shape)
+    
+    return 2.*image - 1., opt
+
