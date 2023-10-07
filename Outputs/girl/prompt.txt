@@ -1,0 +1,19 @@
+python edit_cli.py --input Inputs/girl.png --output Outputs/girl/1.jpg --edit "smooth the scar on her face" --steps 60
+
+python edit_cli.py --input Inputs/girl.png --output Outputs/girl/2.jpg --edit "make her hair blue" --steps 60
+
+python edit_cli.py --input Inputs/full-girl.png --output Outputs/girl/3.jpg --edit "make her hair blue" --steps 60
+
+python edit_cli.py --input Inputs/girl.png --output Outputs/girl/4.jpg --edit "Put on a pair of sunglasses" --steps 60
+
+python edit_cli.py --input Inputs/full-girl.png --output Outputs/girl/5.jpg --edit "Put on a pair of sunglasses" --steps 60
+
+python edit_cli.py --input Inputs/girl.png --output Outputs/girl/6.jpg --cfg-text 5.0 --cfg-image 7.5 --edit "make her hair blue" --steps 60
+
+python edit_cli.py --input Inputs/full-girl.png --output Outputs/girl/7.jpg --cfg-text 5.0 --cfg-image 7.5 --edit "make her hair blue" --steps 60
+
+
+
+python edit_cli.py --input Inputs/full-girl.png --output Outputs/girl/8.jpg --cfg-text 7.0 --cfg-image 2.0 --edit "with blond hair" --steps 60
+
+python edit_cli.py --input Inputs/full-girl.png --output Outputs/girl/9.jpg --cfg-text 7.0 --cfg-image 2.0 --edit "with purple hair" --steps 60

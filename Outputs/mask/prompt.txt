@@ -1,0 +1,3 @@
+python edit_cli.py --input Inputs/mask.jpg --output Outputs/mask/1.jpg --edit "the giraffe raise its head. the pohoto remains black and white." --steps 60
+
+python edit_cli.py --input Inputs/mask-r.jpg --output Outputs/mask/2.jpg --edit "the giraffe raise its head. the photo remains black and white." --steps 60

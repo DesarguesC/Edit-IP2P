@@ -1,0 +1,1 @@
+python edit_cli_ddim.py --input Inputs/girl.png --output Outputs/debug/1.jpg --edit "smooth the scar on her face" --steps 60

@@ -1,0 +1,2 @@
+python edit_cli.py --input Inputs/fig.jpg --output Outputs/giraffe/1.jpg --edit "the giraffe raise its head." --steps 60
+
