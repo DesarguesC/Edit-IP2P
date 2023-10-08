@@ -181,9 +181,12 @@ class CrossAttention(nn.Module):
         context = default(context, x)
         k = self.to_k(context)
         v = self.to_v(context)
-
+        
+        # print(f'Before: q.shape={q.shape}, k.shape={k.shape}')
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
-
+        
+        
+        # print(f'After: q.shape={q.shape}, k.shape={k.shape}')
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
 
         if self.prompt_to_prompt and is_self_attn:

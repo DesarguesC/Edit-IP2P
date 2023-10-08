@@ -88,26 +88,10 @@ def main():
     model.eval().cuda()    
     
     sampler = DDIMSampler(model)
-    batch_size = args.C
-    # model_wrap = K.external.CompVisDenoiser(model)
-    # model_wrap_cfg = CFGDenoiser(model_wrap)
+    batch_size = args.n_samples
 
     null_token = model.get_learned_conditioning([DNP() if args.use_neg_prompt else ""])
-
-
     seed = random.randint(0, 100000) if args.seed is None else args.seed
-    
-    
-    # input_image = Image.open(args.input).convert("RGB")
-    # width, height = input_image.size
-    # width, height = get_resize_shape((width, height), max_resolution=args.max_resolution, \
-    #                                  resize_short_edge=args.resize_short_edge, downsample_factor=args.f)
-    # args.W, args.H = width, height
-    # input_image = ImageOps.fit(input_image, (width, height), method=Image.Resampling.LANCZOS)
-
-    
-
-    
 
     with torch.no_grad(), autocast("cuda"), model.ema_scope():
         
@@ -158,9 +142,7 @@ def main():
         # z = K.sampling.sample_euler_ancestral(model_wrap_cfg, z, sigmas, extra_args=extra_args)
 
         x = diffusion_inference(args, model, sampler, adapter_features=None, append_to_context=None, **extra_args)
-        x = x.squeeze()
-        # x = 255.0 * rearrange(x, "1 c h w -> h w c")
-        x = tensor2img(x)
+        x = 255.0 * rearrange(x, "1 c h w -> h w c")
 
         edited_image = Image.fromarray(x.type(torch.uint8).cpu().numpy())
 

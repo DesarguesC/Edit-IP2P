@@ -195,7 +195,7 @@ def resize_numpy_image(image, max_resolution=512 * 512, resize_short_edge=None, 
     image = cv2.resize(image, (w, h), interpolation=cv2.INTER_LANCZOS4)
     return image
 
-def get_resize_shape(image_shape, max_resolution=512 * 512, resize_short_edge=None, downsample_factor=1) -> tuple:
+def get_resize_shape(image_shape, max_resolution=512 * 512, resize_short_edge=None) -> tuple:
     # print('resize: ', image_shape)
     h, w = image_shape[:2]
     if resize_short_edge is not None:
@@ -203,8 +203,8 @@ def get_resize_shape(image_shape, max_resolution=512 * 512, resize_short_edge=No
     else:
         k = max_resolution / (h * w)
         k = k**0.5
-    h = ((h * k) // 64) * 64 // downsample_factor
-    w = ((w * k) // 64) * 64 // downsample_factor
+    h = ((h * k) // 64) * 64 
+    w = ((w * k) // 64) * 64 
     return (int)(h), (int)(w)
 
 
@@ -244,7 +244,7 @@ def load_img(opt):
     w, h = image.size   # check
     # assert 0, f'image.size={image.size}'
     
-    h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge, downsample_factor=opt.f)
+    h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge)
     print(f"loaded input image of size ({w}, {h}) from {path}")
 
     image = np.asarray(image, dtype=np.float32)
