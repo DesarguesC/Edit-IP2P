@@ -1000,6 +1000,9 @@ class LatentDiffusion(DDPM):
             x_recon = fold(o) / normalization
 
         else:
+            print('noise shape: ', x_noisy.shape)
+            print(cond.keys())
+            print(cond)
             x_recon = self.model(x_noisy, t, **cond)
 
         if isinstance(x_recon, tuple) and not return_ids:
@@ -1417,6 +1420,11 @@ class DiffusionWrapper(pl.LightningModule):
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None):
+        
+        # print(type(c_concat))
+        # print(c_concat[0].shape)   # torch.cat(...) -> 4 batch
+        # print(x.shape)
+        
         if self.conditioning_key is None:
             out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'concat':
@@ -1429,6 +1437,8 @@ class DiffusionWrapper(pl.LightningModule):
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
             xc = torch.cat([x] + c_concat if isinstance(c_concat, list) else [c_concat], dim=1)
             cc = torch.cat(c_crossattn if isinstance(c_crossattn, list) else [c_crossattn], 1)
+            # xc = torch.cat([x] + c_concat, dim=1)
+            # cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(xc, t, context=cc)
         elif self.conditioning_key == 'adm':
             cc = c_crossattn[0]

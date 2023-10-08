@@ -70,8 +70,9 @@ class DDIMSampler(object):
                score_corrector=None,
                corrector_kwargs=None,
                verbose=True,
-               x_T=None,        # conditioned image
-               x_T_unc=None,    # unconditioned image
+               x_T=None,           # noise during timesteps
+               img_cond=None       # conditioned image
+               img_uncond=None,    # unconditioned image
                log_every_t=100,
                prompt_guidance_scale=1.,
                image_guidance_scale=1.,
@@ -93,6 +94,7 @@ class DDIMSampler(object):
         C, H, W = shape
         size = (batch_size, C, H, W)
         print(f'Data shape for DDIM sampling is {size}, eta {eta}')
+        print(f'x_T.shape = {x_T.shape}')
 
         samples, intermediates = self.ddim_sampling(conditioning, size,
                                                     callback=callback,
@@ -113,14 +115,14 @@ class DDIMSampler(object):
         return samples, intermediates
 
     @torch.no_grad()
-    def ddim_sampling(self, cond, shape,
-                      x_T=None, x_T_unc=None, ddim_use_original_steps=False,
+    def ddim_sampling(self, cond, shape, x_T=None,
+                      img_cond=None, img_uncond=None, ddim_use_original_steps=False,
                       callback=None, timesteps=None, quantize_denoised=False,
                       mask=None, x0=None, img_callback=None, log_every_t=100,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       prompt_guidance_scale=1., image_guidance_scale=1., unconditional_conditioning=None,):
         device = self.model.betas.device
-        b = shape[0]
+        b = shape[0]   # batch size
         img = torch.randn(shape, device=device) if x_T is None or image_guidance_scale is None else x_T
         # unconditioning image: torch.zeros_like(...)[0]
 
@@ -181,11 +183,11 @@ class DDIMSampler(object):
             e_t = e_t_uncond_prompt + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
         else:
             # both image conditioning and prompt conditioning
-            x_in = torch.cat([x, x, x_unc, x_unc])
-            t_in = torch.cat([t] * 4)
-            c_in = torch.cat([c, unconditional_conditioning, c, unconditional_conditioning])
-
-            e_t, e_t_uncond_prompt, e_t_uncond_image, e_t_uncond = self.model.apply_model(x_in, t_in, c_in).chunk(4)
+            x_in = torch.cat([x_unc, x, x])
+            t_in = torch.cat([t] * 3)
+            c_in = torch.cat([unconditional_conditioning, unconditional_conditioning, c])
+            print(f'x_in.shape={x_in.shape}, t_in.shape={x_in.shape}, c_in.shape={c_in.shape}')
+            e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(3)   # self.model.apply_model
             e_t = e_t_uncond + image_guidance_scale * (e_t_uncond_prompt - e_t_uncond) + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
 
         if score_corrector is not None:

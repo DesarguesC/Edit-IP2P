@@ -91,7 +91,7 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         '--C',
         type=int,
         default=4,
-        help='latent channels',
+        help='latent channels / batch size / n_samples',
     )
 
     parser.add_argument(
@@ -122,6 +122,13 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         help='the adapter features are multiplied by the cond_weight. The larger the cond_weight, the more aligned '
         'the generated image and condition will be, but the generated quality may be reduced',
     )
+    
+    parser.add_argument(
+        '--n_samples',
+        type=int,
+        default=2,
+        help='namely the batch size'
+    )
 
     parser.add_argument(
         '--seed',
@@ -129,12 +136,7 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default=42,
     )
 
-    parser.add_argument(
-        '--n_samples',
-        type=int,
-        default=4,
-        help='# of samples to generate',
-    )
+    
 
     return parser
 
@@ -266,46 +268,3 @@ def diffusion_inference(opt, model, sampler, adapter_features=None, append_to_co
     return x_samples
 
 
-# irrelevant
-def train_inference(opt, c, model, sampler, adapter_features, cond_model=None, loss_mode=True, append_to_context=None):
-    # get text embedding
-    if opt.scale != 1.0:
-        uc = model.get_learned_conditioning([''])
-    else:
-        uc = None
-    c, uc = fix_cond_shapes(model, c, uc)
-
-    if not hasattr(opt, 'H'):
-        opt.H = 512
-        opt.W = 512
-        print('no------'*10)
-    # print(f'opt shape (inference): ({opt.H}, {opt.W})')
-    shape = [opt.C, opt.H // opt.factor, opt.W // opt.factor]    # fit the adapter feature
-    assert (opt.bsize//2)*2 == opt.bsize, 'bad batch size.'
-    # print(f'inference shape: {shape}')
-    # DDIMSampler
-
-    *_, ratios, samples = sampler.sample(
-        S=opt.steps,
-        conditioning=c,
-        batch_size=opt.bsize // 2,
-        shape=shape,
-        verbose=False,
-        unconditional_guidance_scale=opt.scale,
-        unconditional_conditioning=uc,
-        x_T=None,
-        features_adapter=adapter_features,
-        append_to_context=append_to_context,
-        cond_tau=opt.cond_tau,
-        loss_mode=loss_mode,  # need to be trained
-    )
-    assert samples != None, '?'
-    # print(len(ratios['alphas']), len(samples))
-    assert len(ratios['alphas']) == len(samples), 'Fatal: Something went wrong in plms'
-
-    for i in range(len(samples)):
-        u = model.decode_first_stage(samples[i])
-        samples[i] = cond_model(torch.clamp((u + 1.) / 2., min=0., max=1.))
-
-    # seems no need to return an extra ratios matrix
-    return samples, ratios

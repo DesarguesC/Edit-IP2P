@@ -242,7 +242,7 @@ def load_img(opt):
     
     image = Image.open(path).convert("RGB")
     w, h = image.size   # check
-    assert 0, f'image.size={image.size}'
+    # assert 0, f'image.size={image.size}'
     
     h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge, downsample_factor=opt.f)
     print(f"loaded input image of size ({w}, {h}) from {path}")
@@ -254,10 +254,8 @@ def load_img(opt):
     image = cv2.resize(image, (w,h), interpolation=cv2.INTER_LANCZOS4)
     
     image = np.array(image).astype(np.float32) / 255.0
-    # print('before transpose: ', image.shape)
-    image = image[None].transpose(0, 3, 2, 1)
+    image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image)
-    print(image.shape)
     
-    return 2.*image - 1., opt
+    return 2. * image - 1., opt
 

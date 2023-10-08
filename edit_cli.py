@@ -46,6 +46,25 @@ class CFGDenoiser(nn.Module):
     def forward(self, z, sigma, cond, uncond, text_cfg_scale, image_cfg_scale):
         cfg_z = einops.repeat(z, "1 ... -> n ...", n=3)
         cfg_sigma = einops.repeat(sigma, "1 ... -> n ...", n=3)
+        # print("crossattn shape in CCFGDenoiser: ", cond["c_crossattn"][0].shape)
+        # print("c_concat shape in CCFGDenoiser: ", cond["c_concat"][0].shape)
+        # cfg_cond = {
+        #     "c_crossattn": [torch.cat([cond["c_crossattn"][0], uncond["c_crossattn"][0], cond["c_crossattn"][0], uncond["c_crossattn"][0]])],
+        #     "c_concat": [torch.cat([cond["c_concat"][0], cond["c_concat"][0], uncond["c_concat"][0], uncond["c_concat"][0]])],
+        # }
+        # out_cond, out_img_cond, out_txt_cond, out_uncond = self.inner_model(cfg_z, cfg_sigma, cond=cfg_cond).chunk(4)
+        # return out_uncond + image_cfg_scale * (out_cond - out_img_cond) + text_cfg_scale * (out_cond - out_txt_cond)
+    
+        
+        # cfg_cond = {
+        #     "c_crossattn": [torch.cat([cond["c_crossattn"][0], cond["c_crossattn"][0], uncond["c_crossattn"][0]])],
+        #     "c_concat": [torch.cat([cond["c_concat"][0], uncond["c_concat"][0], uncond["c_concat"][0]])],
+        # }
+        # out_cond, out_txt_cond, out_uncond = self.inner_model(cfg_z, cfg_sigma, cond=cfg_cond).chunk(3)
+        # return out_uncond + image_cfg_scale * (out_cond - out_txt_cond) + text_cfg_scale * (out_txt_cond - out_uncond)
+        
+        # origin
+        
         cfg_cond = {
             "c_crossattn": [torch.cat([cond["c_crossattn"][0], uncond["c_crossattn"][0], uncond["c_crossattn"][0]])],
             "c_concat": [torch.cat([cond["c_concat"][0], cond["c_concat"][0], uncond["c_concat"][0]])],
@@ -83,7 +102,7 @@ def main():
     parser.add_argument("--resolution", default=512, type=int)
     parser.add_argument("--steps", default=100, type=int)
     parser.add_argument("--config", default="configs/generate.yaml", type=str)
-    parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00-22000.ckpt", type=str)
+    parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00.ckpt", type=str)
     parser.add_argument("--pth", default="checkpoints/control_sd15_seg.pth", type=str)
     
     parser.add_argument("--vae-ckpt", default=None, type=str)
@@ -93,7 +112,7 @@ def main():
     parser.add_argument("--cfg-text", default=7.5, type=float)
     parser.add_argument("--cfg-image", default=1.5, type=float)
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--SAMldm", type=str2bool, default=False)
+    parser.add_argument("--SAMldm", type=str2bool, default=True)
     parser.add_argument("--reverse", type=str2bool, default=True)
     parser.add_argument("--sam-ckpt", default="../SAM/sam_vit_h_4b8939.pth", type=str)
     parser.add_argument("--sam-type", default="vit_h", type=str)
@@ -129,6 +148,7 @@ def main():
         cond["c_crossattn"] = [model.get_learned_conditioning([args.edit])]
         input_image = 2 * torch.tensor(np.array(input_image)).float() / 255 - 1
         input_image = rearrange(input_image, "h w c -> 1 c h w").to(model.device)
+        print(input_image.shape)
         cond["c_concat"] = [model.encode_first_stage(input_image).mode()]
 
         uncond = {}
@@ -143,7 +163,7 @@ def main():
         # SAM in latent space
         from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
         
-        if args.SAMldm == 1:
+        if args.SAMldm:
             np_image = tensor2img(input_image)
             name_list = args.input.split('/')
             name_list = name_list[-1].split('.')
@@ -173,6 +193,7 @@ def main():
         }
         torch.manual_seed(seed)
         z = torch.randn_like(cond["c_concat"][0]) * sigmas[0]
+        print(z.shape, extra_args['cond']['c_concat'][0].shape)
         z = K.sampling.sample_euler_ancestral(model_wrap_cfg, z, sigmas, extra_args=extra_args)
         x = model.decode_first_stage(z)
         x = torch.clamp((x + 1.0) / 2.0, min=0.0, max=1.0)

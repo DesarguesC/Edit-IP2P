@@ -6,17 +6,17 @@ import sys
 from argparse import ArgumentParser
 
 import einops
-import k_diffusion as K
+# import k_diffusion as K
 import numpy as np
 import torch
 import torch.nn as nn
-from einops import rearrange
+from einops import rearrange, repeat
 from omegaconf import OmegaConf
 from PIL import Image, ImageOps
 from torch import autocast
 from basicsr.utils import tensor2img
 
-# sys.path.append("./stable_diffusion")
+sys.path.append("./stable_diffusion")
 
 from stable_diffusion.ldm.inference_base import (diffusion_inference, get_base_argument_parser, get_sd_models, str2bool)
 from stable_diffusion.ldm.models.diffusion.ddim_edit import DDIMSampler
@@ -41,6 +41,9 @@ class CFGDenoiser(nn.Module):
         }
         out_cond, out_img_cond, out_uncond = self.inner_model(cfg_z, cfg_sigma, cond=cfg_cond).chunk(3)
         return out_uncond + text_cfg_scale * (out_cond - out_img_cond) + image_cfg_scale * (out_img_cond - out_uncond)
+    
+    
+        
 
 
 def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False):
@@ -69,21 +72,23 @@ def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False):
 
 def main():
     parser = get_base_argument_parser()
-    parser.add_argument("--config", default="configs/generate_ddim.yaml", type=str)
-    parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00-22000.ckpt", type=str)
+    parser.add_argument("--config", default="configs/ip2p-ddim.yaml", type=str)
+    parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00.ckpt", type=str)
     parser.add_argument("--input", required=True, type=str)
     parser.add_argument("--output", required=True, type=str)
     parser.add_argument("--edit_prompt", required=True, type=str)
     parser.add_argument("--cfg-text", default=7.5, type=float)
     parser.add_argument("--cfg-image", default=1.5, type=float)
     args = parser.parse_args()
-    args.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
     config = OmegaConf.load(args.config)
     model = load_model_from_config(config, args.ckpt, args.vae_ckpt)
-    model.eval().cuda()
+    model.eval().cuda()    
+    
     sampler = DDIMSampler(model)
+    batch_size = args.C
     # model_wrap = K.external.CompVisDenoiser(model)
     # model_wrap_cfg = CFGDenoiser(model_wrap)
 
@@ -92,7 +97,7 @@ def main():
 
     seed = random.randint(0, 100000) if args.seed is None else args.seed
     
-    input_img, args = 
+    
     # input_image = Image.open(args.input).convert("RGB")
     # width, height = input_image.size
     # width, height = get_resize_shape((width, height), max_resolution=args.max_resolution, \
@@ -100,23 +105,32 @@ def main():
     # args.W, args.H = width, height
     # input_image = ImageOps.fit(input_image, (width, height), method=Image.Resampling.LANCZOS)
 
-    print(input_image.size)    # check
+    
 
-    if args.edit_prompt == "":
-        input_image.save(args.output)
-        return
+    
 
     with torch.no_grad(), autocast("cuda"), model.ema_scope():
+        
+        input_image, args = load_img(args)        
+        if args.edit_prompt == "":
+            input_image.save(args.output)
+            return        
+        input_image = input_image.to(args.device)  # ?
+        input_image = repeat(input_image, '1 ... -> b ...', b=batch_size)
+        print(f'input_image shape: {input_image.shape}')
+        
         cond = {}
         cond["c_crossattn"] = model.get_learned_conditioning([args.edit_prompt])
-        input_image, args = load_img(args)
-        # input_image = rearrange(input_image, "h w c -> 1 c h w").to(model.device)
-        assert (input_image.shape) == 4
-        assert input_image.shape = (1,args.C, args.H, args.W) or input_image.shape = (1,args.C, args.W, args.H), f'Wrongly shaped input_image as {input_image.shape}'
+        cond["c_concat"] = model.encode_first_stage(input_image).mode()
+        # tt = cond['c_concat']
+        # tmp = model.get_first_stage_encoding(cond['c_concat'])
+        # print(f'get_first_stage_encoding: {tt.shape} -> {tmp.shape}')
         
-        cond["c_concat"] = model.encode_first_stage(input_image).mode()    # .mode() -> ?
-        assert cond['c_concat'] is not None
-
+        
+        # model.get_first_stage_encoding(model.encode_first_stage(input_image).mode())    # .mode() -> ?
+        # assert input_image.shape == (1,args.C, args.H, args.W), f'Wrongly shaped input_image as {input_image.shape}, while shape in args is {(1, args.C, args.H, args.W)}'
+        
+        # init image in latent space
         # model.get_first_stage_encoding(model.encode_first_stage(init_image))
         # TODO: init latent space directly?
 
