@@ -72,7 +72,7 @@ def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False):
 
 def main():
     parser = get_base_argument_parser()
-    parser.add_argument("--config", default="configs/ip2p-ddim.yaml", type=str)
+    parser.add_argument("--config", default="configs/generate.yaml", type=str)
     parser.add_argument("--ckpt", default="checkpoints/instruct-pix2pix-00.ckpt", type=str)
     parser.add_argument("--input", default=None, type=str)
     parser.add_argument("--output", required=True, type=str)

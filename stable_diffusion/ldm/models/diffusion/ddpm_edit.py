@@ -1447,7 +1447,7 @@ class DiffusionWrapper(pl.LightningModule):
             
             xc = torch.cat([torch.cat([x[i],c_concat[i]], dim=2) for i in range(len(x))], dim=0)   # change 'cat'
             cc = torch.cat( [torch.cat([u]*2, dim=1) for u in c_crossattn]  , dim=0)
-            print(xc.shape, t.shape, cc.shape)
+            # print(xc.shape, t.shape, cc.shape)
             # multi times of origin batch size
             out = self.diffusion_model(xc, t, context=cc)   
            
