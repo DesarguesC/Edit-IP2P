@@ -1414,10 +1414,15 @@ class DiffusionWrapper(pl.LightningModule):
         super().__init__()
         self.diffusion_model = instantiate_from_config(diff_model_config)
         self.conditioning_key = conditioning_key
-        assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'hybrid_']
+        assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'cut', 'control']
 
-    def forward(self, x, t, c_concat: list = None, c_crossattn: list = None):
-        
+    def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, extra_feature: dict = None):
+        """
+            extra_feature: 
+                SAM segmentation result,
+                vision token,  ???
+                ...
+        """
         if self.conditioning_key is None:
             out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'concat':
@@ -1427,8 +1432,10 @@ class DiffusionWrapper(pl.LightningModule):
             cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(x, t, context=cc)
         elif self.conditioning_key == 'hybrid':
-            # modified for ip2p, unet in-channel = 8, cat [x, prompt] respectively
-            # print(f'c_concat.shape = {c_concat[0].shape}, c_crossattn.shape={c_crossattn[0].shape}')
+            # modified for ip2p, unet in-channel = 8 ===> CAT at dim -> [batch / channel] respectively
+            assert self.diffusion_model.in_channels == 8
+            assert isinstance(x, list)
+            print(f'x[0].shape = {x[0].shape}, c_concat[0].shape = {c_concat[0].shape}, c_crossattn[0].shape={c_crossattn[0].shape}')
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
             if isinstance(x, list) and isinstance(c_concat, list):
                 assert len(x) == len(c_concat)
@@ -1438,22 +1445,35 @@ class DiffusionWrapper(pl.LightningModule):
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
             # multi times of origin batch size
             out = self.diffusion_model(xc, t, context=cc)
-        elif self.conditioning_key == 'hybrid_':
-            # modified for sd-v1.5, unet in-channel = 4
+        elif self.conditioning_key == 'cut':
+            assert self.diffusion_model.in_channels == 4
+            # modified for sd-v1.5, unet in-channel = 4 ===> CAT at dim -> [batch / w] respectively
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
             assert isinstance(c_crossattn, list)
             if isinstance(x, list) and isinstance(c_concat, list):
                 assert len(x) == len(c_concat)
             
+            # CAT(inner): shape length -> 3;  CAT(outter): shape length -> 4.         'dim = 0' infered to different channels
             xc = torch.cat([torch.cat([x[i],c_concat[i]], dim=2) for i in range(len(x))], dim=0)   # change 'cat'
+            # 
             cc = torch.cat( [torch.cat([u]*2, dim=1) for u in c_crossattn]  , dim=0)
             # print(xc.shape, t.shape, cc.shape)
             # multi times of origin batch size
-            out = self.diffusion_model(xc, t, context=cc)   
+            out = self.diffusion_model(xc, t, context=cc) 
            
         elif self.conditioning_key == 'adm':
             cc = c_crossattn[0]
             out = self.diffusion_model(x, t, y=cc)
+        elif self.conditioning_key == 'control':
+            # use sd-v1.5, unet in-channel = 4, use extra feature
+            assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
+            assert isinstance(c_crossattn, list)
+            if isinstance(x, list) and isinstance(c_concat, list):
+                assert len(x) == len(c_concat)
+            xc = torch.cat([torch.cat([x[i],c_concat[i]], dim=2) for i in range(len(x))], dim=0)
+            cc = torch.cat( [torch.cat([u]*2, dim=1) for u in c_crossattn], dim=0)
+            out = self.diffusion_model(xc, t, context=cc) 
+        
         else:
             raise NotImplementedError()
 

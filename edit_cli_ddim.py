@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import math
-import random
-import sys
+import math, random, os, sys
 from argparse import ArgumentParser
 
 import einops
@@ -14,9 +12,11 @@ from einops import rearrange, repeat
 from omegaconf import OmegaConf
 from PIL import Image, ImageOps
 from torch import autocast
-from basicsr.utils import tensor2img
+from basicsr.utils import tensor2img, img2tensor
 
 sys.path.append("./stable_diffusion")
+
+from sam.util import show_anns
 
 from stable_diffusion.ldm.inference_base import (diffusion_inference, get_base_argument_parser, get_sd_models, str2bool)
 from stable_diffusion.ldm.models.diffusion.ddim_edit import DDIMSampler
@@ -79,6 +79,15 @@ def main():
     parser.add_argument("--edit_prompt", required=True, type=str)
     parser.add_argument("--cfg-text", default=7.5, type=float)
     parser.add_argument("--cfg-image", default=1.5, type=float)
+    
+    parser.add_argument("--SAMldm", type=str2bool, default=True)
+    parser.add_argument("--reverse", type=str2bool, default=True)
+    parser.add_argument("--sam-ckpt", default="../SAM/sam_vit_h_4b8939.pth", type=str)
+    parser.add_argument("--sam-type", default="vit_h", type=str)
+    parser.add_argument("--pth", default="checkpoints/control_sd15_seg.pth", type=str)
+    
+    
+    
     args = parser.parse_args()
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -106,13 +115,6 @@ def main():
         cond = {}
         cond["c_crossattn"] = model.get_learned_conditioning([args.edit_prompt])
         cond["c_concat"] = model.encode_first_stage(input_image).mode()
-        # tt = cond['c_concat']
-        # tmp = model.get_first_stage_encoding(cond['c_concat'])
-        # print(f'get_first_stage_encoding: {tt.shape} -> {tmp.shape}')
-        
-        
-        # model.get_first_stage_encoding(model.encode_first_stage(input_image).mode())    # .mode() -> ?
-        # assert input_image.shape == (1,args.C, args.H, args.W), f'Wrongly shaped input_image as {input_image.shape}, while shape in args is {(1, args.C, args.H, args.W)}'
         
         # init image in latent space
         # model.get_first_stage_encoding(model.encode_first_stage(init_image))
@@ -128,8 +130,28 @@ def main():
             conditioned image: model.encode_first_stage(input_image).mode()
         """
 
-
-        # sigmas = model_wrap.get_sigmas(args.steps)
+        from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+        
+        if args.SAMldm:
+            np_image = tensor2img(input_image)
+            name_list = args.input.split('/')
+            name_list = name_list[-1].split('.')
+            name = name_list[0]
+            
+            sam = sam_model_registry[args.sam_type](checkpoint=args.sam_ckpt)
+            sam.to(device=args.device)
+            mask_generator = SamAutomaticMaskGenerator(sam)
+            masks = mask_generator.generate(np_image)
+            # sorted_masks = sorted(masks, key=(lambda x: x['area']), reverse=True)
+            
+            li = args.output.split('/')
+            base = '.'
+            for x in li:
+                if x != li[-1]:
+                    base = os.path.join(base, x)
+            
+            valid_seg = show_anns(masks, name, base_path=base, reverse=args.reverse)
+            seg_cond = img2tensor(valid_seg, bgr2rgb=True, float32=True) / 255.
 
         extra_args = {
             "cond": cond,

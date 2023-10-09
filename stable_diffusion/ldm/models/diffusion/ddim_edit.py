@@ -207,10 +207,13 @@ class DDIMSampler(object):
                 'c_crossattn': [unconditional_conditioning, unconditional_conditioning, c],
                 'c_concat': [img_uncond, img_cond, img_cond]
             }
+            
+            # concat prompt vector and latent image to constrain the generation simultaneously, implement cfg for ControlNet constrains.
             e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(3, dim=0)   # self.model.apply_model
             # print(f'e_t_uncond.shape={e_t_uncond.shape}, e_t_uncond_prompt.shape={e_t_uncond_prompt.shape}, e_t.shape={e_t.shape}')
             e_t = e_t_uncond + image_guidance_scale * (e_t_uncond_prompt - e_t_uncond) + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
-            e_t, _ = e_t.chunk(2,dim=2)
+            if self.model.apply_model.diffusion_model.in_channels == 4:
+                e_t, _ = e_t.chunk(2,dim=2)
             # print(e_t.shape)
 
         if score_corrector is not None:
