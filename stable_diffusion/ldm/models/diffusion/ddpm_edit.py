@@ -402,7 +402,7 @@ class DDPM(pl.LightningModule):
         return denoise_grid
 
     @torch.no_grad()
-    def log_images(self, batch, N=8, n_row=2, sample=True, return_keys=None, **kwargs):
+    def log_images(self, batch, N=4, n_row=2, sample=True, return_keys=None, **kwargs):   # amended
         log = dict()
         x = self.get_input(batch, self.first_stage_key)
         N = min(x.shape[0], N)
@@ -1427,9 +1427,20 @@ class DiffusionWrapper(pl.LightningModule):
             cc = torch.cat(c_crossattn, 1)
             out = self.diffusion_model(x, t, context=cc)
         elif self.conditioning_key == 'hybrid':
+            
+            # modified for sd-v1.5, unet in-channel = 4
+            
+            # print(f'c_concat.shape = {c_concat[0].shape}, c_crossattn.shape={c_crossattn[0].shape}')
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-            xc = torch.cat([x] + c_concat if isinstance(c_concat, list) else [c_concat], dim=1)
-            cc = torch.cat(c_crossattn if isinstance(c_crossattn, list) else [c_crossattn], 1)
+            if isinstance(x, list) and isinstance(c_concat, list):
+                assert len(x) == len(c_concat)
+            
+            xc = torch.cat([torch.cat([x[i], c_concat[i]], dim=1) for i in range(len(x))], dim=0)   # change 'cat'
+            # xc = torch.cat([torch.cat(x, dim=0), torch.cat(c_concat, dim=0)], dim=1)   # origin 'cat'
+                
+            cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
+            
+            # multi times of origin batch size
             out = self.diffusion_model(xc, t, context=cc)
         elif self.conditioning_key == 'adm':
             cc = c_crossattn[0]
@@ -1446,7 +1457,7 @@ class Layout2ImgDiffusion(LatentDiffusion):
         assert cond_stage_key == 'coordinates_bbox', 'Layout2ImgDiffusion only for cond_stage_key="coordinates_bbox"'
         super().__init__(cond_stage_key=cond_stage_key, *args, **kwargs)
 
-    def log_images(self, batch, N=8, *args, **kwargs):
+    def log_images(self, batch, N=4, *args, **kwargs):   # amended
         logs = super().log_images(batch=batch, N=N, *args, **kwargs)
 
         key = 'train' if self.training else 'validation'

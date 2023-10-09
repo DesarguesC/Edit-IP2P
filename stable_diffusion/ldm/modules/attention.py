@@ -182,7 +182,6 @@ class CrossAttention(nn.Module):
         k = self.to_k(context)
         v = self.to_v(context)
         
-        # print(f'Before: q.shape={q.shape}, k.shape={k.shape}')
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
         
         

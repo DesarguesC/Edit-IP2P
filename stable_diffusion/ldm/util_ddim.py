@@ -224,6 +224,7 @@ def fix_cond_shapes(model, prompt_condition, uc):
         uc = torch.cat((uc, null_cond.repeat((uc.shape[0], 1, 1))), axis=1)
     while prompt_condition.shape[1] < uc.shape[1]:
         prompt_condition = torch.cat((prompt_condition, null_cond.repeat((prompt_condition.shape[0], 1, 1))), axis=1)
+    print(f'prompt_condition.shape = {prompt_condition.shape}, uc.shape={uc.shape}')
     return prompt_condition, uc
 
 
@@ -236,7 +237,16 @@ def load_img(opt):
     assert opt.f > 0, f'downsample factor = {opt.f}'
     
     path = opt.input
-    assert os.path.isfile(path), f'input image path = {path}, file not exists.'
+    if path is not None:
+        assert os.path.isfile(path), f'input image path = {path}, file not exists.'
+    else:
+        import math
+        opt.W = opt.H = w = h = (int)(math.sqrt(opt.max_resolution))
+        image = torch.randn((1,3,w,h), device=opt.device)
+        image = torch.zeros_like(image, device=opt.device)
+        return 2. * image - 1., opt
+    
+        
     resize_short_edge = opt.resize_short_edge
     max_resolution = opt.max_resolution
     

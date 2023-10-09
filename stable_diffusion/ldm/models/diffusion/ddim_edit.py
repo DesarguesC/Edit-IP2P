@@ -155,7 +155,8 @@ class DDIMSampler(object):
                 img_orig = self.model.q_sample(x0, ts)  # TODO: deterministic forward pass?
                 img = img_orig * mask + (1. - mask) * img
             
-            # img: history detail in diffusion process
+            # img: history in diffusion process
+            # print(f'Before q_sasmple_ddim img shape: {img.shape}')
             outs = self.p_sample_ddim(img, img_cond, cond, ts, index=index, use_original_steps=ddim_use_original_steps,
                                       quantize_denoised=quantize_denoised, temperature=temperature,
                                       noise_dropout=noise_dropout, score_corrector=score_corrector,
@@ -166,7 +167,7 @@ class DDIMSampler(object):
             img, pred_x0 = outs
             if callback: callback(i)
             if img_callback: img_callback(pred_x0, i)
-
+            # print(f'After q_sasmple_ddim img shape: {img.shape}')
             if index % log_every_t == 0 or index == total_steps - 1:
                 intermediates['x_inter'].append(img)
                 intermediates['pred_x0'].append(pred_x0)
@@ -178,29 +179,34 @@ class DDIMSampler(object):
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       prompt_guidance_scale=1., image_guidance_scale=1., unconditional_conditioning=None, img_uncond=None):
         b, *_, device = *x.shape, x.device
-
+        # print(f'single x.shape={x.shape}')
         if unconditional_conditioning is None or prompt_guidance_scale == 1. and image_guidance_scale == 1.:
             e_t = self.model.apply_model(x, t, c)
         elif image_guidance_scale == 1. :
             # no unconditioning image guidance, only prompt guidance
             x_in = torch.cat([x] * 2)
             t_in = torch.cat([t] * 2)
-            c_in = torch.cat([unconditional_conditioning, c])
+            # c_in_crossattn = torch.cat([unconditional_conditioning, c])
+            # c_in_concat = torch.cat([img_cond, img_cond])
+            c_in = {
+                'c_concat': [unconditional_conditioning, c],
+                'c_crossattn': [img_cond, img_cond]
+            }
 
             e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
             e_t = e_t_uncond_prompt + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
         else:
             # both image conditioning and prompt conditioning
-            x_in = torch.cat([x] * 3)
-            t_in = torch.cat([t] * 3)
-            c_in_crossattn = torch.cat([unconditional_conditioning, unconditional_conditioning, c])
-            c_in_concat = torch.cat([img_uncond, img_cond, img_cond])
+            x_in = [x] * 3
+            t_in = torch.cat([t] * 3) # -> (9,6)
+            # t_in = torch.cat([t] * 3) # -> (6,3)
+            # c_in_crossattn = torch.cat([unconditional_conditioning, unconditional_conditioning, c])
+            # c_in_concat = torch.cat([img_uncond, img_cond, img_cond])
+            
             c_in = {
-                'c_concat': [c_in_concat],
-                'c_crossattn': [c_in_crossattn]
+                'c_crossattn': [unconditional_conditioning, unconditional_conditioning, c],
+                'c_concat': [img_uncond, img_cond, img_cond]
             }
-            # print(f'x_in.shape={x_in.shape}, t_in.shape={x_in.shape}, '\
-                                     #   f'c_concat.shape={c_in_concat.shape}, c_crossattn.shape={c_in_crossattn.shape}')
             e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(3)   # self.model.apply_model
             e_t = e_t_uncond + image_guidance_scale * (e_t_uncond_prompt - e_t_uncond) + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
 
