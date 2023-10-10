@@ -1,12 +1,15 @@
 import torch, cv2
 import numpy as np
 import os, sys
+
+sys.path.append('../')
+
 import os.path as osp
 from basicsr.utils import (get_env_info, get_root_logger, get_time_str,
                            scandir, tensor2img)
 from basicsr.utils.options import copy_opt_file, dict2str
 import logging
-from dist_util import init_dist, master_only, get_bare_model, get_dist_info
+from sam.dist_util import init_dist, master_only, get_bare_model, get_dist_info
 from omegaconf import OmegaConf
 from sam.seg2latent import ProjectionModel as PM
 from sam.data import DataCreator
@@ -32,7 +35,7 @@ def mkdir_and_rename(path):
     os.makedirs(osp.join(path, 'visualization'))
 
 
-def load_resume_state(name='seg-sam', auto_resume=None):
+def load_resume_state(name='seg-sam', auto_resume=True):
     resume_state_path = None
     if auto_resume:
         state_path = osp.join('experiments', name, 'training_states')
@@ -72,25 +75,19 @@ def load_target_model(config, device):
     return encoder, mask_generator
 
 def main():
-
+    multi_gpu = True
 
     local_rank = 0
     config = './config/ip2p-ddim.yaml'
     name = 'seg-sam-train'
-
-
-
-
-
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'   
+    
     torch.cuda.set_device(local_rank)
-    print('init starts')
-    torch.distributions.init_process_group(backend='NCCL')
+    print('start init')
+    torch.distributed.init_process_group(backend='NCCL')
     print('init ends')
-
-    torch.backends.cudnn.benchmark = True
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    torch.cuda.set_device(local_rank)
-
+    torch.backends.cudnn.benchmark = True    
+    
     encoder_model, sam_model = load_target_model(config, device)
     encoder_model = torch.nn.parallel.DistributedDataParallel(
         encoder_model,
