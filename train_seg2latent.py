@@ -1,6 +1,8 @@
 import torch, cv2
 import numpy as np
 import os, sys
+from tqdm import tqdm
+from torch.utils.data import DataLoader
 
 sys.path.append('../')
 
@@ -75,25 +77,26 @@ def load_target_model(config, device):
     return encoder, mask_generator
 
 def main():
-    multi_gpu = True
+    single_gpu = True
 
     local_rank = 0
     config = './config/ip2p-ddim.yaml'
     name = 'seg-sam-train'
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'   
-    
-    torch.cuda.set_device(local_rank)
-    print('start init')
-    torch.distributed.init_process_group(backend='NCCL')
-    print('init ends')
-    torch.backends.cudnn.benchmark = True    
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    if not single_gpu:
+        torch.cuda.set_device(local_rank)
+        print('start init')
+        torch.distributed.init_process_group(backend='NCCL')
+        print('init ends')
+        torch.backends.cudnn.benchmark = True
     
     encoder_model, sam_model = load_target_model(config, device)
-    encoder_model = torch.nn.parallel.DistributedDataParallel(
+    encoder_model = encoder_model if single_gpu else torch.nn.parallel.DistributedDataParallel(
         encoder_model,
         device_ids=[local_rank],
         output_device=local_rank)
-    sam_model = torch.nn.parallel.DistributedDataParallel(
+    sam_model = sam_model if single_gpu else torch.nn.parallel.DistributedDataParallel(
         sam_model,
         device_ids=[local_rank],
         output_device=local_rank)
@@ -118,18 +121,24 @@ def main():
     print(f'loading data with length: {len(data_creator)}')
 
     train_sampler = torch.utils.data.distributed.DistributedSampler(data_creator)
-    train_dataloader = torch.utils.data.DataLoader(
-        data_creator,
-        batch_size=bsize,
-        shuffle=(train_sampler is None),
-        num_workers=num_workers,
-        pin_memory=True,
-        drop_last=True,
-        sampler=train_sampler)
+
+
+
+    train_dataloader = tqdm(DataLoader(dataset=data_creator, batch_size=bsize, shuffle=True), \
+                            desc='Procedure', total=len(data_creator)) \
+        if single_gpu else torch.utils.data.DataLoader(
+                                data_creator,
+                                batch_size=bsize,
+                                shuffle=(train_sampler is None),
+                                num_workers=num_workers,
+                                pin_memory=True,
+                                drop_last=True,
+                                sampler=train_sampler)
+
 
     pm_ = PM().to(device)
 
-    pm_ = torch.nn.parallel.DistributedDataParallel(
+    pm_ = pm_ if single_gpu else torch.nn.parallel.DistributedDataParallel(
         pm_,
         device_ids=[local_rank],
         output_device=local_rank)
@@ -178,7 +187,7 @@ def main():
     for epoch in range(N):
         train_dataloader.sampler.set_epoch(epoch)
         # train
-        for _, data in enumerate(train_dataloader):
+        for _, data in enumerate(iter):
             current_iter += 1
 
             """
