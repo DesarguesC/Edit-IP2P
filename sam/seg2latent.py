@@ -1,7 +1,7 @@
 from torch import nn
 import torch
-from stable_diffusion.ldm.modules.attention import LinearAttention as la
-from stable_diffusion.ldm.modules.attention import
+# from stable_diffusion.ldm.modules.attention import LinearAttention as la
+# from stable_diffusion.ldm.modules.attention import
 
 """
                        SAM
@@ -16,10 +16,10 @@ from stable_diffusion.ldm.modules.attention import
 """
 
 
-class POS(nn.Module):
+class PrejectionModel(nn.Module):
     # projection via one-shot learning
     # to extract latent feature from segmentation gaining from SAM
-    def __init__(self, dim=3, dropout=0.5):
+    def __init__(self, dim=4, dropout=0.5):
         # seg 2 latent | judge in latent spacec
         super.__init__()
         # in_channels = out_channels = dim

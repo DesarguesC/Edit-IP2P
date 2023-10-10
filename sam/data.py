@@ -76,7 +76,9 @@ class DataCreator():
                         np_image = tensor2img(image)
                         masks = self.sam(np_image)
                         seg = get_masked_Image((masks))
-                        self.seg_list.append(seg)
+                        if not isinstance(seg, torch.tensor):
+                            seg = img2tensor(seg)
+                        self.seg_list.append(self.latent_encoder(seg).mode())
                     else:
                         raise NotImplementedError('Type Unrecognized')
                 else:
@@ -94,4 +96,6 @@ class DataCreator():
         return len(self.seg_list)
 
     def __getitem__(self, item):
-        return self.data_dict_list[item]
+        i = self.data_dict_list[item]
+        assert i['Latent'].sahpe == i['SAM'].shape, 'Here'
+        return i
