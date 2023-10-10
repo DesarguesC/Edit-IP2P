@@ -231,12 +231,13 @@ def fix_cond_shapes(model, prompt_condition, uc):
 
 
 
-def load_img(opt):
+def load_img(opt=None, path=None):
     
     assert opt.f != None
     assert opt.f > 0, f'downsample factor = {opt.f}'
     
-    path = opt.input
+    path = opt.input if opt != None else path
+    assert path != None, "no path when reading images"
     if path is not None:
         assert os.path.isfile(path), f'input image path = {path}, file not exists.'
     else:

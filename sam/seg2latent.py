@@ -1,4 +1,3 @@
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from torch import nn
 import torch
 from stable_diffusion.ldm.modules.attention import LinearAttention as la
