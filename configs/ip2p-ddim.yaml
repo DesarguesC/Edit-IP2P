@@ -75,10 +75,10 @@ model:
     cond_stage_config:
       target: stable_diffusion.ldm.modules.encoders.modules.FrozenCLIPEmbedder
 
-    seg_stage_config:
-      target: sam.seg2latent.ProjectionModel
-      params:
-          dim: 4
+    # seg_stage_config:
+    #   target: sam.seg2latent.ProjectionModel
+    #   params:
+    #       dim: 4
 
 data:
   target: main.DataModuleFromConfig

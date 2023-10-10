@@ -39,7 +39,7 @@ class DataCreator():
         assert isinstance(image_folder, list) or isinstance(image_folder, str), 'path error when getting DataCreator initialized'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.path = image_folder if isinstance(image_folder, list) else [image_folder]
-        self.latent_encoder = encoder.to(self.device)
+        self.latent_encoder = encoder
         self.sam = sam
         self.factor = downsample_factor
 
@@ -59,38 +59,30 @@ class DataCreator():
         self.seg_list = self.latent_list = []
         self.data_dict_list = []         # [dict]
 
-    def make_data(self, Type: str = None):
-        assert Type != None
+    def make_data(self):
         for i in range(len(self.path)):
             folder = self.path[i]
             dir = os.listdir(folder)
-            iter_ = tqdm(dir, desc=f'Cal {Type} Image in Folder: [{i}|{len(self.path)}]', total=len(dir))
+            iter_ = tqdm(dir, desc=f'Adding Images in Folder to the list: [{i+1}|{len(self.path)}]', total=len(dir))
             for j, file in enumerate(iter_):
-                if file.endswith('.png') and file.endswith('.jpg'):
+                if file.endswith('.png') or file.endswith('.jpg'):
                     file = os.path.join(folder, file)  # absolute file path
                     image, _ = loads(opt=None, path=file)
-                    if Type == 'Latent':
-                        image = repeat(image, "1 ... -> b ...", b=self.batch_size)
-                        image = image.to(self.device)
-                        self.latent_list.append(self.latent_encoder(image).mode())
-                    elif Type == 'SAM':
-                        np_image = tensor2img(image)
-                        h, w = np_image.size
-                        np_image = resize(np_image, (w,h), interpolation=cv2.INTER_LANCZOS4)
-                        masks = self.sam(np_image)
-                        seg = get_masked_Image((masks))
-                        if not isinstance(seg, torch.tensor):
-                            seg = img2tensor(seg, bgr2rgb=True, float32=True) / 255.
-                        self.seg_list.append(self.latent_encoder(seg).mode())
-                    else:
-                        raise NotImplementedError('Type Unrecognized')
+                    image = repeat(image, "1 ... -> b ...", b=self.batch_size)
+                    # image = image.to(self.device)
+                    self.latent_list.append(image)
+                    np_image = tensor2img(image)
+                    # masks = self.sam(np_image)
+                    # seg = get_masked_Image((masks))
+                    # if not isinstance(seg, torch.tensor):
+                        # seg = img2tensor(seg, bgr2rgb=True, float32=True) / 255.
+                    self.seg_list.append(np_image)
                 else:
                     continue
         return
 
     def MakeData(self):
-        self.make_data("Laten")
-        self.make_data("SAM")
+        self.make_data()
         assert len(self.seg_list) == len(self.latent_list), 'error occurred when making data -> make'
         self.data_dict_list = [ {'latent-feature':self.latent_list[i], 'segmentation': self.seg_list[i]} for i in range(len(self.seg_list))]
 
@@ -100,5 +92,13 @@ class DataCreator():
 
     def __getitem__(self, item):
         i = self.data_dict_list[item]
-        assert i['Latent'].sahpe == i['SAM'].shape, 'Here'
-        return i
+
+        latent = self.latent_encoder(i['latent-feature'].to(self.device)).mode()
+        
+        seg = self.sam(i['segmentation'])
+        seg = get_masked_Image(seg).to(self.device)
+        seg = self.latent_encoder(img2tensor(seg)).mode()
+        
+        assert seg.shape == latent.shape, f'seg.shape={seg.shape}, latent.shape={latent.shape}'
+        
+        return {'latent-feature':latent, 'segmentation': seg}

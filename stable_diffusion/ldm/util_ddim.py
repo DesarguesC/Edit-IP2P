@@ -256,8 +256,9 @@ def fix_cond_shapes(model, prompt_condition, uc):
 
 def load_img(opt=None, path=None):
     
-    assert opt.f != None
-    assert opt.f > 0, f'downsample factor = {opt.f}'
+    if opt != None:
+        assert opt.f != None
+        assert opt.f > 0, f'downsample factor = {opt.f}'
     
     path = opt.input if opt != None else path
     assert path != None, "no path when reading images"
@@ -270,20 +271,19 @@ def load_img(opt=None, path=None):
         image = torch.zeros_like(image, device=opt.device)
         return 2. * image - 1., opt
     
-        
-    resize_short_edge = opt.resize_short_edge
-    max_resolution = opt.max_resolution
-    
     image = Image.open(path).convert("RGB")
     w, h = image.size   # check
     # assert 0, f'image.size={image.size}'
     
-    h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge)
-    print(f"loaded input image of size ({w}, {h}) from {path}")
+    h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution if opt != None else 512*512, \
+                            resize_short_edge=opt.resize_short_edge if opt != None else None)
+    if opt != None:
+        print(f"loaded input image of size ({w}, {h}) from {path}")
 
     image = np.asarray(image, dtype=np.float32)
-    opt.W = (int)(w)
-    opt.H = (int)(h)
+    if opt != None:
+        opt.W = (int)(w)
+        opt.H = (int)(h)
     
     image = cv2.resize(image, (w,h), interpolation=cv2.INTER_LANCZOS4)
     

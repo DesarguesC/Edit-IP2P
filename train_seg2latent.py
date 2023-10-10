@@ -5,6 +5,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 
 sys.path.append('../')
+sys.path.append('./stable_diffusion')
 
 import os.path as osp
 from basicsr.utils import (get_env_info, get_root_logger, get_time_str,
@@ -60,7 +61,7 @@ def load_target_model(config, device):
     print('loading configs...')
     config = OmegaConf.load(config)
 
-    sd_ckpt = './checkpoint/v1-5-pruned-emaonly.ckpt'
+    sd_ckpt = './checkpoints/v1-5-pruned-emaonly.ckpt'
     vae_ckpt = None
 
     sam_ckpt = '../SAM/sam_vit_h_4b8939.pth'
@@ -68,11 +69,12 @@ def load_target_model(config, device):
 
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     sam.to(device=device)
-    mask_generator = SamAutomaticMaskGenerator(sam)
+    mask_generator = SamAutomaticMaskGenerator(sam).generate
 
 
     model = load_model_from_config(config, sd_ckpt, vae_ckpt)
-    encoder = model.model.encode_first_stage().to(device)
+    model.eval().to(device)
+    encoder = model.encode_first_stage
 
     return encoder, mask_generator
 
@@ -80,10 +82,18 @@ def main():
     single_gpu = True
 
     local_rank = 0
-    config = './config/ip2p-ddim.yaml'
+    config = './configs/ip2p-ddim.yaml'
     name = 'seg-sam-train'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+    
+    learning_rate = 1.0e-04
+    bsize = 8
+    num_workers = 25
+    save_path = '../Train/'
+    
+    print_fq = 100
+    N = 10000
+    
     if not single_gpu:
         torch.cuda.set_device(local_rank)
         print('start init')
@@ -103,28 +113,27 @@ def main():
 
 
     data_creator_param = {
-        'image_folder': '../COCO/train2017/train2017',
-        'encoder': encoder_model.module,
-        'sam': sam_model.module,
+        # 'image_folder': '../COCO/train2017/train2017/',
+        'image_folder': '../test-dataset/',
+        'encoder': encoder_model if single_gpu else encoder_model.module,
+        'sam': sam_model if single_gpu else sam_model.module,
         'batch_size': 1,
         'downsample_factor': 8
     }
 
-    learning_rate = 1.0e-04
-    bsize = 8
-    num_workers = 25
-    save_path = '../Train/'
+    
 
     data_creator = DataCreator(**data_creator_param)
     with torch.no_grad():
         data_creator.MakeData()
+        print(len(data_creator))
+        print(data_creator[0]['Latent'].shape, data_creator[0]['SAM'].shape)
     print(f'loading data with length: {len(data_creator)}')
+    
+    if not single_gpu:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(data_creator)
 
-    train_sampler = torch.utils.data.distributed.DistributedSampler(data_creator)
-
-
-
-    train_dataloader = tqdm(DataLoader(dataset=data_creator, batch_size=bsize, shuffle=True), \
+    train_dataloader = tqdm(DataLoader(dataset=data_creator, batch_size=bsize, shuffle=True, drop_last=True), \
                             desc='Procedure', total=len(data_creator)) \
         if single_gpu else torch.utils.data.DataLoader(
                                 data_creator,
@@ -181,8 +190,7 @@ def main():
 
     # training
     logger.info(f'Start training from epoch: {start_epoch}, iter: {current_iter}')
-    print_fq = 100
-    N = 10000
+    
 
     for epoch in range(N):
         train_dataloader.sampler.set_epoch(epoch)
