@@ -16,7 +16,7 @@ import torch
 """
 
 
-class PrejectionModel(nn.Module):
+class ProjectionModel(nn.Module):
     # projection via one-shot learning
     # to extract latent feature from segmentation gaining from SAM
     def __init__(self, dim=4, dropout=0.5):

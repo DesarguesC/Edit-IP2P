@@ -95,6 +95,29 @@ def get_obj_from_str(string, reload=False):
     return getattr(importlib.import_module(module, package=None), cls)
 
 
+def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False):
+    print(f"Loading model from {ckpt}")
+    pl_sd = torch.load(ckpt, map_location="cpu")
+    if "global_step" in pl_sd:
+        print(f"Global Step: {pl_sd['global_step']}")
+    sd = pl_sd["state_dict"]
+    if vae_ckpt is not None:
+        print(f"Loading VAE from {vae_ckpt}")
+        vae_sd = torch.load(vae_ckpt, map_location="cpu")["state_dict"]
+        sd = {
+            k: vae_sd[k[len("first_stage_model.") :]] if k.startswith("first_stage_model.") else v
+            for k, v in sd.items()
+        }
+    model = instantiate_from_config(config.model)
+    m, u = model.load_state_dict(sd, strict=False)
+    if len(m) > 0 and verbose:
+        print("missing keys:")
+        print(m)
+    if len(u) > 0 and verbose:
+        print("unexpected keys:")
+        print(u)
+    return model
+
 checkpoint_dict_replacements = {
     'cond_stage_model.transformer.text_model.embeddings.': 'cond_stage_model.transformer.embeddings.',
     'cond_stage_model.transformer.text_model.encoder.': 'cond_stage_model.transformer.encoder.',

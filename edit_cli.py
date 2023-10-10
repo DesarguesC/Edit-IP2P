@@ -16,27 +16,16 @@ from omegaconf import OmegaConf
 from PIL import Image, ImageOps
 from torch import autocast
 
+
 from basicsr.utils import tensor2img, img2tensor
+
 
 sys.path.append("./stable_diffusion")
 
-from stable_diffusion.ldm.util import instantiate_from_config
-
+from stable_diffusion.ldm.util_ddim import instantiate_from_config, load_model_from_config
+from stable_diffusion.ldm.inference_base import str2bool
 
 device = "cuda"
-
-
-
-    
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ("yes", "true", "t", "y", "1"):
-        return True
-    elif v.lower() in ("no", "false", "f", "n", "0"):
-        return False
-    else:
-        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 class CFGDenoiser(nn.Module):
     def __init__(self, model):
@@ -73,28 +62,7 @@ class CFGDenoiser(nn.Module):
         return out_uncond + text_cfg_scale * (out_cond - out_img_cond) + image_cfg_scale * (out_img_cond - out_uncond)
 
 
-def load_model_from_config(config, ckpt, vae_ckpt=None, verbose=False):
-    print(f"Loading model from {ckpt}")
-    pl_sd = torch.load(ckpt, map_location="cpu")
-    if "global_step" in pl_sd:
-        print(f"Global Step: {pl_sd['global_step']}")
-    sd = pl_sd["state_dict"]
-    if vae_ckpt is not None:
-        print(f"Loading VAE from {vae_ckpt}")
-        vae_sd = torch.load(vae_ckpt, map_location="cpu")["state_dict"]
-        sd = {
-            k: vae_sd[k[len("first_stage_model.") :]] if k.startswith("first_stage_model.") else v
-            for k, v in sd.items()
-        }
-    model = instantiate_from_config(config.model)
-    m, u = model.load_state_dict(sd, strict=False)
-    if len(m) > 0 and verbose:
-        print("missing keys:")
-        print(m)
-    if len(u) > 0 and verbose:
-        print("unexpected keys:")
-        print(u)
-    return model
+
 
 
 def main():

@@ -1,11 +1,11 @@
-import torch, cv2
-import sys, os
+import torch, os, cv2
+from cv2 import resize
 import numpy as np
 from stable_diffusion.ldm.util_ddim import load_img as loads
 from basicsr import img2tensor, tensor2img
 from einops import repeat
 from tqdm import tqdm
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+# from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 
 def get_masked_Image(seg: list = None, no_color: bool = False):
@@ -35,12 +35,13 @@ def get_masked_Image(seg: list = None, no_color: bool = False):
 # Considering some little differences between generated and ground truth contributions
 
 class DataCreator():
-    def __init__(self, encoder: any = None, sam: any = None, image_folder: any = None, batch_size: int = 1):
+    def __init__(self, image_folder: any = None, encoder: any = None, sam: any = None, batch_size: int = 1, downsample_factor=8):
         assert isinstance(image_folder, list) or isinstance(image_folder, str), 'path error when getting DataCreator initialized'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.path = image_folder if isinstance(image_folder, list) else [image_folder]
         self.latent_encoder = encoder.to(self.device)
         self.sam = sam
+        self.factor = downsample_factor
 
         """
             Before DataCreator Declaration:
@@ -74,10 +75,12 @@ class DataCreator():
                         self.latent_list.append(self.latent_encoder(image).mode())
                     elif Type == 'SAM':
                         np_image = tensor2img(image)
+                        h, w = np_image.size
+                        np_image = resize(np_image, (w,h), interpolation=cv2.INTER_LANCZOS4)
                         masks = self.sam(np_image)
                         seg = get_masked_Image((masks))
                         if not isinstance(seg, torch.tensor):
-                            seg = img2tensor(seg)
+                            seg = img2tensor(seg, bgr2rgb=True, float32=True) / 255.
                         self.seg_list.append(self.latent_encoder(seg).mode())
                     else:
                         raise NotImplementedError('Type Unrecognized')
@@ -89,7 +92,7 @@ class DataCreator():
         self.make_data("Laten")
         self.make_data("SAM")
         assert len(self.seg_list) == len(self.latent_list), 'error occurred when making data -> make'
-        self.data_dict_list = [ {'Latent':self.latent_list[i], 'SAM': self.seg_list[i]} for i in range(len(self.seg_list))]
+        self.data_dict_list = [ {'latent-feature':self.latent_list[i], 'segmentation': self.seg_list[i]} for i in range(len(self.seg_list))]
 
     def __len__(self):
         assert len(self.seg_list) == len(self.latent_list), 'error occurred when making data -> len'
