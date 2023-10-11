@@ -272,11 +272,12 @@ def load_img(opt=None, path=None):
         return 2. * image - 1., opt
     
     image = Image.open(path).convert("RGB")
+    
     w, h = image.size   # check
     # assert 0, f'image.size={image.size}'
     
-    h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution if opt != None else 512*512, \
-                            resize_short_edge=opt.resize_short_edge if opt != None else None)
+    h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge) \
+                                                                                    if opt != None else (512,512)
     if opt != None:
         print(f"loaded input image of size ({w}, {h}) from {path}")
 
@@ -286,6 +287,9 @@ def load_img(opt=None, path=None):
         opt.H = (int)(h)
     
     image = cv2.resize(image, (w,h), interpolation=cv2.INTER_LANCZOS4)
+    
+    if opt is None:
+        return image, None
     
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)

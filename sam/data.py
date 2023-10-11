@@ -3,24 +3,27 @@ from cv2 import resize
 import numpy as np
 from stable_diffusion.ldm.util_ddim import load_img as loads
 from basicsr import img2tensor, tensor2img
-from einops import repeat
+from einops import repeat, rearrange
 from tqdm import tqdm
 # from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 
-def get_masked_Image(seg: list = None, no_color: bool = False):
+def get_masked_Image(seg: list = None, no_color: bool = False, use_alpha=True):
     assert seg != None
     # seq_choice = kwargs['seq_choice'] if 'seq_choice' in kwargs.keys() else [1] * len(seg)
     if len(seg) == 0:
         return
     sorted_seg = sorted(seg, key=(lambda x: x['area']), reverse=True)
-    img = np.ones((sorted_seg[0]['segmentation'].shape[0], sorted_seg[0]['segmentation'].shape[1], 4))
-    img[:,:,3] = 0
+    img = np.ones((sorted_seg[0]['segmentation'].shape[0], sorted_seg[0]['segmentation'].shape[1], 4 if use_alpha else 3))
+    img[:,:,3 if use_alpha else 2] = 0
 
     for i in range(len(sorted_seg)):
         m = sorted_seg[i]['segmentation']
         # print('seg shape: ', ann['segmentation'].shape)
-        color_mask = np.concatenate([[0, 0, 0] if no_color else np.random.random(3), [0.9]])
+        if use_alpha:
+            color_mask = np.concatenate([[0, 0, 0] if no_color else np.random.random(3), [0.9]])
+        else:
+            color_mask = [0, 0, 0] if no_color else np.random.random(3)
 
         img[m] = color_mask
 
@@ -56,7 +59,8 @@ class DataCreator():
         """
 
         self.batch_size = batch_size
-        self.seg_list = self.latent_list = []
+        self.seg_list = []
+        self.latent_list = []
         self.data_dict_list = []         # [dict]
 
     def make_data(self):
@@ -66,19 +70,21 @@ class DataCreator():
             iter_ = tqdm(dir, desc=f'Adding Images in Folder to the list: [{i+1}|{len(self.path)}]', total=len(dir))
             for j, file in enumerate(iter_):
                 if file.endswith('.png') or file.endswith('.jpg'):
+                    
                     file = os.path.join(folder, file)  # absolute file path
                     image, _ = loads(opt=None, path=file)
+                    self.seg_list.append(image)
+                    
+                    image = np.array(image).astype(np.float32) / 255.0
+                    image = image[None].transpose(0, 3, 1, 2)
+                    image = torch.from_numpy(image)
                     image = repeat(image, "1 ... -> b ...", b=self.batch_size)
-                    # image = image.to(self.device)
+                    # print(type(image))
                     self.latent_list.append(image)
-                    np_image = tensor2img(image)
-                    # masks = self.sam(np_image)
-                    # seg = get_masked_Image((masks))
-                    # if not isinstance(seg, torch.tensor):
-                        # seg = img2tensor(seg, bgr2rgb=True, float32=True) / 255.
-                    self.seg_list.append(np_image)
+                    
                 else:
                     continue
+        # assert 0, f'types: {type(self.latent_list[0].shape)}, {self.seg_list[0].shape}'
         return
 
     def MakeData(self):
@@ -92,13 +98,20 @@ class DataCreator():
 
     def __getitem__(self, item):
         i = self.data_dict_list[item]
+        u, v = i['latent-feature'], i['segmentation']
 
-        latent = self.latent_encoder(i['latent-feature'].to(self.device)).mode()
+        latent = self.latent_encoder(torch.tensor(u.clone().detach().requires_grad_(True), \
+                                                   dtype=torch.float32, requires_grad=True).to(self.device)).mode()
+        # .clone().detach().requires_grad_(True)
+        seg = np.array(v.astype(np.uint8))
+        seg = self.sam(seg)
+        seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False)).to(self.device)
+        # assert 0, f'seg.shape = {seg.shape}'
+        # torch.Size([512, 512, 4])
+        seg = rearrange(seg, "h w c -> 1 c h w").to(self.device)
+        seg_latent = self.latent_encoder(torch.tensor(seg.clone().detach().requires_grad_(True), \
+                                                       dtype=torch.float32, requires_grad=True)).mode()
+        seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size)
+        assert seg_latent.shape == latent.shape, f'seg_latent.shape={seg_latent.shape}, latent.shape={latent.shape}'
         
-        seg = self.sam(i['segmentation'])
-        seg = get_masked_Image(seg).to(self.device)
-        seg = self.latent_encoder(img2tensor(seg)).mode()
-        
-        assert seg.shape == latent.shape, f'seg.shape={seg.shape}, latent.shape={latent.shape}'
-        
-        return {'latent-feature':latent, 'segmentation': seg}
+        return {'latent-feature':latent, 'segmentation': seg_latent}

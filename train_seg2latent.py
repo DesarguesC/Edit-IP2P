@@ -57,40 +57,38 @@ def load_resume_state(name='seg-sam', auto_resume=True):
     return resume_state
 
 
-def load_target_model(config, device):
+def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
     print('loading configs...')
+    
     config = OmegaConf.load(config)
-
-    sd_ckpt = './checkpoints/v1-5-pruned-emaonly.ckpt'
-    vae_ckpt = None
-
-    sam_ckpt = '../SAM/sam_vit_h_4b8939.pth'
-    sam_type = 'vit_h'
-
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     sam.to(device=device)
     mask_generator = SamAutomaticMaskGenerator(sam).generate
-
 
     model = load_model_from_config(config, sd_ckpt, vae_ckpt)
     model.eval().to(device)
     encoder = model.encode_first_stage
 
-    return encoder, mask_generator
+    return encoder, mask_generator, config
 
 def main():
     single_gpu = True
-
+    config = './configs/ip2p-ddim.yaml',
     local_rank = 0
-    config = './configs/ip2p-ddim.yaml'
     name = 'seg-sam-train'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
     learning_rate = 1.0e-04
     bsize = 8
     num_workers = 25
     save_path = '../Train/'
-    
+    loader_params = {
+        'config': './configs/ip2p-ddim.yaml',
+        'sd_ckpt': './checkpoints/v1-5-pruned-emaonly.ckpt',
+        'vae_ckpt': None,
+        'sam_ckpt': '../autodl-tmp/SAM/sam_vit_h_4b8939.pth',
+        'sam_type': 'vit_h',
+        'device': device    
+    }
     print_fq = 100
     N = 10000
     
@@ -100,8 +98,26 @@ def main():
         torch.distributed.init_process_group(backend='NCCL')
         print('init ends')
         torch.backends.cudnn.benchmark = True
+    encoder_model, sam_model, configs = load_target_model(**loader_params)
     
-    encoder_model, sam_model = load_target_model(config, device)
+    data_creator_params = {
+        # 'image_folder': '../COCO/train2017/train2017/',
+        'image_folder': '../autodl-tmp/test-dataset/',
+        'encoder': encoder_model if single_gpu else encoder_model.module,
+        'sam': sam_model if single_gpu else sam_model.module,
+        'batch_size': 1,
+        'downsample_factor': 8
+    }
+    
+    tot_params = {
+        'loader_params': loader_params,
+        'data_creator_params': data_creator_params
+    }
+    
+    
+    
+    
+    
     encoder_model = encoder_model if single_gpu else torch.nn.parallel.DistributedDataParallel(
         encoder_model,
         device_ids=[local_rank],
@@ -112,22 +128,15 @@ def main():
         output_device=local_rank)
 
 
-    data_creator_param = {
-        # 'image_folder': '../COCO/train2017/train2017/',
-        'image_folder': '../test-dataset/',
-        'encoder': encoder_model if single_gpu else encoder_model.module,
-        'sam': sam_model if single_gpu else sam_model.module,
-        'batch_size': 1,
-        'downsample_factor': 8
-    }
+    
 
     
 
-    data_creator = DataCreator(**data_creator_param)
+    data_creator = DataCreator(**data_creator_params)
     with torch.no_grad():
         data_creator.MakeData()
-        print(len(data_creator))
-        print(data_creator[0]['Latent'].shape, data_creator[0]['SAM'].shape)
+        # print(len(data_creator))
+        # print(data_creator[0]['Latent'].shape, data_creator[0]['SAM'].shape)
     print(f'loading data with length: {len(data_creator)}')
     
     if not single_gpu:
@@ -171,14 +180,14 @@ def main():
         log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
         logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
         logger.info(get_env_info())
-        logger.info(dict2str(config))
+        logger.info(dict2str(configs))
     else:
         # WARNING: should not use get_root_logger in the above codes, including the called functions
         # Otherwise the logger will not be properly initialized
         log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
         logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
         logger.info(get_env_info())
-        logger.info(dict2str(config))
+        logger.info(dict2str(configs))
         resume_optimizers = resume_state['optimizers']
         optimizer.load_state_dict(resume_optimizers)
         logger.info(f"Resuming training from epoch: {resume_state['epoch']}, " f"iter: {resume_state['iter']}.")
@@ -186,16 +195,18 @@ def main():
         current_iter = resume_state['iter']
 
     # copy the yml file to the experiment root
-    copy_opt_file(config, experiments_root)
+    # from shutil import copyfile
+    # print(experiments_root)
+    # copyfile(config, experiments_root + '/')
 
     # training
     logger.info(f'Start training from epoch: {start_epoch}, iter: {current_iter}')
     
 
     for epoch in range(N):
-        train_dataloader.sampler.set_epoch(epoch)
+        # train_dataloader.sampler.set_epoch(epoch)
         # train
-        for _, data in enumerate(iter):
+        for _, data in enumerate(train_dataloader):
             current_iter += 1
 
             """
@@ -203,11 +214,16 @@ def main():
                 output: latent image
             """
 
-            cin, cout = data['segmentation'], data['latent-image']
+            cin, cout = data['segmentation'], data['latent-feature']
+            cin = torch.tensor(cin.squeeze(), dtype=torch.float32, requires_grad=True)
+            cout = torch.tensor(cout.squeeze(), dtype=torch.float32, requires_grad=True)
+            
+            assert cin.shape == cout.shape, f'cin.shape = {cin.shape}, cout.shape = {cout.shape}'
+            
             optimizer.zero_grad()
             pm_.zero_grad()
 
-            pred = pm_.module(cin)
+            pred = pm_(cin) if single_gpu else pm_.module(cin)
             kl_loss_sum = torch.nn.function.kl_div(pred, cout, reduction='sum', log_target=True)
             kl_loss_sum.backward()
             optimizer.step()
