@@ -20,7 +20,7 @@ def get_masked_Image(seg: list = None, no_color: bool = False):
     for i in range(len(sorted_seg)):
         m = sorted_seg[i]['segmentation']
         # print('seg shape: ', ann['segmentation'].shape)
-        color_mask = np.concatenate([[0, 0, 0] if no_color else np.random.random(3), [0.35]])
+        color_mask = np.concatenate([[0, 0, 0] if no_color else np.random.random(3), [0.9]])
 
         img[m] = color_mask
 
