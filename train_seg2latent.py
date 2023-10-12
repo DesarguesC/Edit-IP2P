@@ -116,7 +116,7 @@ def main():
     
     data_creator_params = {
         # 'image_folder': '../COCO/train2017/train2017/',
-        'image_folder': '../autodl-tmp/COCO/train2017/',
+        'image_folder': '../autodl-tmp/COCO/val2017/',
         'encoder': encoder_model if single_gpu else encoder_model.module,
         'sam': sam_model if single_gpu else sam_model.module,
         'batch_size': 1,

@@ -77,6 +77,13 @@ class DataCreator():
                     
                     file = os.path.join(folder, file)  # absolute file path
                     image, _ = loads(opt=None, path=file)
+                    seg = np.array(image.astype(np.uint8))
+                    seg = self.sam(seg)
+                    seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False)).to(self.device)
+                    seg = rearrange(seg, "h w c -> 1 c h w").to(self.device)
+                    seg_latent = self.latent_encoder(torch.tensor(seg.clone().detach().requires_grad_(True), \
+                                                                   dtype=torch.float32, requires_grad=True)).mode()
+                    seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size)
                     self.seg_list.append(image)
                     
                     image = np.array(image).astype(np.float32) / 255.0
@@ -84,11 +91,12 @@ class DataCreator():
                     image = torch.from_numpy(image)
                     image = repeat(image, "1 ... -> b ...", b=self.batch_size)
                     # print(type(image))
-                    self.latent_list.append(image)
+                    latent = self.latent_encoder(torch.tensor(image.clone().detach().requires_grad_(True), \
+                                                   dtype=torch.float32, requires_grad=True).to(self.device)).mode()
+                    self.latent_list.append(latent)
                     
                 else:
                     continue
-        # assert 0, f'types: {type(self.latent_list[0].shape)}, {self.seg_list[0].shape}'
         return
 
     def MakeData(self):
@@ -103,19 +111,7 @@ class DataCreator():
     def __getitem__(self, item):
         i = self.data_dict_list[item]
         u, v = i['latent-feature'], i['segmentation']
-
-        latent = self.latent_encoder(torch.tensor(u.clone().detach().requires_grad_(True), \
-                                                   dtype=torch.float32, requires_grad=True).to(self.device)).mode()
-        # .clone().detach().requires_grad_(True)
-        seg = np.array(v.astype(np.uint8))
-        seg = self.sam(seg)
-        seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False)).to(self.device)
-        # assert 0, f'seg.shape = {seg.shape}'
-        # torch.Size([512, 512, 4])
-        seg = rearrange(seg, "h w c -> 1 c h w").to(self.device)
-        seg_latent = self.latent_encoder(torch.tensor(seg.clone().detach().requires_grad_(True), \
-                                                       dtype=torch.float32, requires_grad=True)).mode()
-        seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size)
-        assert seg_latent.shape == latent.shape, f'seg_latent.shape={seg_latent.shape}, latent.shape={latent.shape}'
         
-        return {'latent-feature':latent, 'segmentation': seg_latent}
+        assert u.shape == v.shape, f'seg_latent.shape={seg_latent.shape}, latent.shape={latent.shape}'
+        
+        return {'latent-feature':u, 'segmentation': v}
