@@ -1,6 +1,5 @@
-import torch, cv2
+import torch, cv2, os, sys
 import numpy as np
-import os, sys
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.nn.functional import kl_div
@@ -62,25 +61,23 @@ def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
     print('loading configs...')
     
     config = OmegaConf.load(config)
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
-    sam.to(device=device)
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt) 
+    sam.to(device)
     mask_generator = SamAutomaticMaskGenerator(sam).generate
-
     model = load_model_from_config(config, sd_ckpt, vae_ckpt)
     model.eval().to(device)
-    encoder = model.encode_first_stage
+    # encoder = model.encode_first_stage
 
-    return encoder, mask_generator, config
+    return model, mask_generator, config
 
 def main():
-    single_gpu = True
+    single_gpu = False
     config = './configs/ip2p-ddim.yaml',
-    local_rank = 0
     name = 'seg-sam-train'
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     learning_rate = 1.0e-04
-    bsize = 8
+    bsize = 6
     num_workers = 25
+    device = 'cuda'
     save_path = '../Train/'
     loader_params = {
         'config': './configs/ip2p-ddim.yaml',
@@ -88,36 +85,40 @@ def main():
         'vae_ckpt': None,
         'sam_ckpt': '../autodl-tmp/SAM/sam_vit_h_4b8939.pth',
         'sam_type': 'vit_h',
-        'device': device    
+        'device': device
     }
     print_fq = 100
     save_fq = 100
     N = 3000
+    local_rank = 0
+    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     if not single_gpu:
-        torch.cuda.set_device(local_rank)
-        print('start init')
-        torch.distributed.init_process_group(backend='NCCL')
-        print('init ends')
+        init_dist('pytorch')
         torch.backends.cudnn.benchmark = True
-    encoder_model, sam_model, configs = load_target_model(**loader_params)
-
-
+        torch.cuda.set_device(local_rank)
+        
+    
+    model, sam_model, configs = load_target_model(**loader_params)
+    
+    # device = torch.device("cuda:0,1,2" if torch.cuda.is_available() else "cpu")
+    
     if not single_gpu:
-        encoder_model = torch.nn.parallel.DistributedDataParallel(
-            encoder_model,
-            device_ids=[local_rank],
-            output_device=local_rank)
+        model = torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[local_rank], output_device=local_rank)
+        # encoder_model.to(device)
+        
     if not single_gpu:
         sam_model = torch.nn.parallel.DistributedDataParallel(
             sam_model,
-            device_ids=[local_rank],
-            output_device=local_rank)
+            device_ids=[local_rank], output_device=local_rank)
+        # sam_model.to(device)
     
     data_creator_params = {
         # 'image_folder': '../COCO/train2017/train2017/',
-        'image_folder': '../autodl-tmp/COCO/val2017/',
-        'encoder': encoder_model if single_gpu else encoder_model.module,
+        'image_folder': '../autodl-tmp/val2017/',
+        'encoder': model.encoder_model if single_gpu else model.module.encoder_model,
         'sam': sam_model if single_gpu else sam_model.module,
         'batch_size': 1,
         'downsample_factor': 8
@@ -129,14 +130,14 @@ def main():
     }
 
     data_creator = DataCreator(**data_creator_params)
+    
     with torch.no_grad():
         data_creator.MakeData()
         # print(len(data_creator))
         # print(data_creator[0]['Latent'].shape, data_creator[0]['SAM'].shape)
     print(f'loading data with length: {len(data_creator)}')
     
-    if not single_gpu:
-        train_sampler = torch.utils.data.distributed.DistributedSampler(data_creator)
+    train_sampler = None if single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
 
     train_dataloader = tqdm(DataLoader(dataset=data_creator, batch_size=bsize, shuffle=True, drop_last=True), \
                             desc='Procedure', total=len(data_creator)) \
@@ -148,20 +149,18 @@ def main():
                                 pin_memory=True,
                                 drop_last=True,
                                 sampler=train_sampler)
-
-
+    
     pm_ = PM().to(device)
-
     pm_ = pm_ if single_gpu else torch.nn.parallel.DistributedDataParallel(
         pm_,
         device_ids=[local_rank],
-        output_device=local_rank)
-
+        output_device=local_rank1)
+    # pm_.to(device)
 
 
 
     # optimizer
-    params = list(pm_.parameters())
+    params = list(pm_.parameters() if single_gpu else pm_.module.parameters())
     optimizer = torch.optim.AdamW(params, lr=learning_rate)
 
     experiments_root = osp.join('experiments', 'seg-sam-training')
