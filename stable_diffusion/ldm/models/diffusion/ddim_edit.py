@@ -129,7 +129,8 @@ class DDIMSampler(object):
         else:
             img = x_T
             
-        if image_guidance_scale != None and image_guidance_scale != 1:
+        if image_guidance_scale != None\
+                and image_guidance_scale != 1:
             assert img_cond != None
         # unconditioning image: torch.zeros_like(...)[0]
 

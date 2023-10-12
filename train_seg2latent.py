@@ -99,6 +99,18 @@ def main():
         print('init ends')
         torch.backends.cudnn.benchmark = True
     encoder_model, sam_model, configs = load_target_model(**loader_params)
+
+
+    if not single_gpu:
+        encoder_model = torch.nn.parallel.DistributedDataParallel(
+            encoder_model,
+            device_ids=[local_rank],
+            output_device=local_rank)
+    if not single_gpu:
+        sam_model = torch.nn.parallel.DistributedDataParallel(
+            sam_model,
+            device_ids=[local_rank],
+            output_device=local_rank)
     
     data_creator_params = {
         # 'image_folder': '../COCO/train2017/train2017/',
@@ -113,24 +125,6 @@ def main():
         'loader_params': loader_params,
         'data_creator_params': data_creator_params
     }
-    
-    
-    
-    
-    
-    encoder_model = encoder_model if single_gpu else torch.nn.parallel.DistributedDataParallel(
-        encoder_model,
-        device_ids=[local_rank],
-        output_device=local_rank)
-    sam_model = sam_model if single_gpu else torch.nn.parallel.DistributedDataParallel(
-        sam_model,
-        device_ids=[local_rank],
-        output_device=local_rank)
-
-
-    
-
-    
 
     data_creator = DataCreator(**data_creator_params)
     with torch.no_grad():

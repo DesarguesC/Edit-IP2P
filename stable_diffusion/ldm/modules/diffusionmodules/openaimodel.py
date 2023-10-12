@@ -707,7 +707,7 @@ class UNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps=None, context=None, y=None, extra_features: dict = None,**kwargs):
+    def forward(self, x, timesteps=None, context=None, y=None, **kwargs):
         """
         Apply the model to an input batch.
         :param x: an [N x C x ...] Tensor of inputs.
@@ -716,6 +716,9 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
+
+        adapter_feature = kwargs['extra_features'] if 'extra_features' in kwargs.keys() else [None] * len(self.input_blocks)
+
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
@@ -727,9 +730,18 @@ class UNetModel(nn.Module):
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
+        # feature_iter = iter(adapter_feature)
+
+
         h = x.type(self.dtype)
-        for module in self.input_blocks:
+        assert len(self.input_blocks) == 4, f'len(self.input_blocks) = {len(self.input_blocks)}'
+
+        model_iter =  zip(self.input_blocks, adapter_feature)
+
+        for _, module, feature in model_iter:
             h = module(h, emb, context)
+            if feature != None:
+                h = h + feature
             hs.append(h)
         h = self.middle_block(h, emb, context)
         for module in self.output_blocks:

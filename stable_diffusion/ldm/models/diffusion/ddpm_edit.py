@@ -1416,7 +1416,7 @@ class DiffusionWrapper(pl.LightningModule):
         self.conditioning_key = conditioning_key
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'cut', 'control']
 
-    def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, extra_feature: dict = None):
+    def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, **kwargs):
         """
             extra_feature: 
                 SAM segmentation result,
@@ -1470,10 +1470,12 @@ class DiffusionWrapper(pl.LightningModule):
             assert isinstance(c_crossattn, list)
             if isinstance(x, list) and isinstance(c_concat, list):
                 assert len(x) == len(c_concat)
+            #   extra_feature: dict = None
+
             xc = torch.cat([torch.cat([x[i],c_concat[i]], dim=2) for i in range(len(x))], dim=0)
-            cc = torch.cat( [torch.cat([u]*2, dim=1) for u in c_crossattn], dim=0)
-            out = self.diffusion_model(xc, t, context=cc) 
-        
+            cc = torch.cat([torch.cat([u]*2, dim=1) for u in c_crossattn], dim=0)
+            out = self.diffusion_model(xc, t, context=cc, **kwargs)
+
         else:
             raise NotImplementedError()
 
