@@ -3,6 +3,7 @@ import numpy as np
 import os, sys
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from torch.nn.functional import kl_div
 
 sys.path.append('../')
 sys.path.append('./stable_diffusion')
@@ -90,7 +91,8 @@ def main():
         'device': device    
     }
     print_fq = 100
-    N = 10000
+    save_fq = 100
+    N = 3000
     
     if not single_gpu:
         torch.cuda.set_device(local_rank)
@@ -114,7 +116,7 @@ def main():
     
     data_creator_params = {
         # 'image_folder': '../COCO/train2017/train2017/',
-        'image_folder': '../autodl-tmp/test-dataset/',
+        'image_folder': '../autodl-tmp/COCO/train2017/',
         'encoder': encoder_model if single_gpu else encoder_model.module,
         'sam': sam_model if single_gpu else sam_model.module,
         'batch_size': 1,
@@ -200,6 +202,7 @@ def main():
     for epoch in range(N):
         # train_dataloader.sampler.set_epoch(epoch)
         # train
+        logger.info(f'Current Training Procedure: [{epoch+1}|{N}]')
         for _, data in enumerate(train_dataloader):
             current_iter += 1
 
@@ -218,18 +221,19 @@ def main():
             pm_.zero_grad()
 
             pred = pm_(cin) if single_gpu else pm_.module(cin)
-            kl_loss_sum = torch.nn.function.kl_div(pred, cout, reduction='sum', log_target=True)
+            kl_loss_sum = kl_div(pred, cout, reduction='sum', log_target=True)
             kl_loss_sum.backward()
             optimizer.step()
 
             if current_iter%print_fq == 0:
-                loss_info = '[%d|%d], KL Divergence Loss: %.6f' % (current_iter+1, N, kl_loss_sum)
+                loss_info = '[%d|%d], KL Divergence Loss: %.6f' % (epoch+1, N, kl_loss_sum)
                 logger.info(loss_info)
 
                 # save checkpoint
                 rank, _ = get_dist_info()
-                if (rank == 0) and ((current_iter + 1) % config['training']['save_freq'] == 0):
-                    save_filename = f'model_ad_{current_iter + 1}.pth'
+                logger.info(f'rank = {rank}')
+                if (rank == 0) and ((current_iter + 1) % save_fq == 0):
+                    save_filename = f'model_pr_{current_iter + 1}.pth'
                     save_path = os.path.join(experiments_root, 'models', save_filename)
                     save_dict = {}
                     pm_bare = get_bare_model(pm_)
@@ -238,14 +242,16 @@ def main():
                         if key.startswith('module.'):  # remove unnecessary 'module.'
                             key = key[7:]
                         save_dict[key] = param.cpu()
+                    
+                    logger.info(f'saving pth to path: {save_path}')
                     torch.save(save_dict, save_path)
                     # save state
+                    
                     state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
                     save_filename = f'{current_iter + 1}.state'
                     save_path = os.path.join(experiments_root, 'training_states', save_filename)
+                    logger.info(f'saving state to path: {save_path}')
                     torch.save(state, save_path)
-
-
 
     return
 
@@ -253,4 +259,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
+    print('finished.')

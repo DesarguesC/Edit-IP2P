@@ -31,23 +31,21 @@ class ProjectionModel(nn.Module):
 
         self.conv1 = nn.Conv2d(self.dim, self.dim, kernel_size=1, stride=1, padding=0)
         self.conv2 = nn.Sequential(
-            nn.Conv2d(2 * self.dim, self.dim, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(self.dim, self.dim, kernel_size=3, stride=1, padding=1),
             nn.Dropout(self.dropout)
         )
 
         self.conv3 = nn.Conv2d(self.dim, self.dim, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
+        # x: 64 * 64
         assert len(x.shape) == 4, f'forward input shape = {x.shape}'
-        x0 = x
+        x0 = self.up(x)                                        # x0: 128 * 128
+        x1 = self.conv2(x0) + x0                               # x1: 128 * 128
+        x2 = self.conv1(self.down(x1))                        # x3: 64 * 64
+        x3 = self.conv1(x2)                                     # x4: 64 * 64
 
-        x1 = self.conv1(self.up(x0))
-        x2 = self.conv2(self.up(torch.cat([x0, x1], dim=1))) + self.up(self.up(x0))
-
-        x3 = self.conv3(self.down(x2 + self.up(x1)))
-        x4 = self.down(x3)
-
-        return x4
+        return x3
 
 
 
