@@ -16,14 +16,18 @@ def get_masked_Image(seg: list = None, no_color: bool = False, use_alpha=True):
     sorted_seg = sorted(seg, key=(lambda x: x['area']), reverse=True)
     img = np.ones((sorted_seg[0]['segmentation'].shape[0], sorted_seg[0]['segmentation'].shape[1], 4 if use_alpha else 3))
     img[:,:,3 if use_alpha else 2] = 0
+    length = len(seg)
+    cut = (int)(length // 3) if length%3==0 else (int)((length + 3 - length%3) // 3)
+    c = lambda x: [x / cut if x < cut else (1. - 1.0e-03), (0. + 1.0e-03) if x < cut else \
+        ((1. - 1.0e-03) if x >= 2 * cut else (x - cut) / cut), (x - 2 * cut) / cut if x >= 2 * cut else (0. + 1.0e-03)]
 
     for i in range(len(sorted_seg)):
         m = sorted_seg[i]['segmentation']
         # print('seg shape: ', ann['segmentation'].shape)
         if use_alpha:
-            color_mask = np.concatenate([[0, 0, 0] if no_color else np.random.random(3), [0.9]])
+            color_mask = np.concatenate([[0, 0, 0] if no_color else c(i*1.), [0.9]])
         else:
-            color_mask = [0, 0, 0] if no_color else np.random.random(3)
+            color_mask = [0, 0, 0] if no_color else c(i*1.)
 
         img[m] = color_mask
 
