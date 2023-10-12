@@ -107,7 +107,7 @@ class Upsample(nn.Module):
             self.conv = conv_nd(dims, self.channels, self.out_channels, 3, padding=padding)
 
     def forward(self, x):
-        assert x.shape[1] == self.channels
+        assert x.shape[1] == self.channels, f'x.shape[1] = {x.shape[1]}, self.channels = {self.channels}'
         if self.dims == 3:
             x = F.interpolate(
                 x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest"
