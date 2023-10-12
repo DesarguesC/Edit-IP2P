@@ -77,8 +77,21 @@ def main():
     learning_rate = 1.0e-04
     bsize = 6
     num_workers = 25
-    device = 'cuda'
     save_path = '../Train/'
+    print_fq = 100
+    save_fq = 100
+    N = 3000
+    local_rank = 0
+    
+    if not single_gpu:
+        init_dist('pytorch')
+        torch.backends.cudnn.benchmark = True
+        device = 'cuda'
+        torch.cuda.set_device(0)
+        torch.cuda.set_device(1)
+        torch.cuda.set_device(2)
+        
+    
     loader_params = {
         'config': './configs/ip2p-ddim.yaml',
         'sd_ckpt': './checkpoints/v1-5-pruned-emaonly.ckpt',
@@ -87,17 +100,6 @@ def main():
         'sam_type': 'vit_h',
         'device': device
     }
-    print_fq = 100
-    save_fq = 100
-    N = 3000
-    local_rank = 0
-    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    
-    if not single_gpu:
-        init_dist('pytorch')
-        torch.backends.cudnn.benchmark = True
-        torch.cuda.set_device(local_rank)
-        
     
     model, sam_model, configs = load_target_model(**loader_params)
     
@@ -154,7 +156,7 @@ def main():
     pm_ = pm_ if single_gpu else torch.nn.parallel.DistributedDataParallel(
         pm_,
         device_ids=[local_rank],
-        output_device=local_rank1)
+        output_device=local_rank)
     # pm_.to(device)
 
 
