@@ -80,11 +80,11 @@ class DataCreator():
                     seg = np.array(image.astype(np.uint8))
                     seg = self.sam(seg)
                     seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False)).to(self.device)
-                    seg = rearrange(seg, "h w c -> 1 c h w").to(self.device)
+                    seg = rearrange(seg, "h w c -> 1 c h w")
                     seg_latent = self.latent_encoder(torch.tensor(seg.clone().detach().requires_grad_(True), \
                                                                    dtype=torch.float32, requires_grad=True)).mode()
                     seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size)
-                    self.seg_list.append(image)
+                    self.seg_list.append(image.to('cpu'))
                     
                     image = np.array(image).astype(np.float32) / 255.0
                     image = image[None].transpose(0, 3, 1, 2)
@@ -92,8 +92,8 @@ class DataCreator():
                     image = repeat(image, "1 ... -> b ...", b=self.batch_size)
                     # print(type(image))
                     latent = self.latent_encoder(torch.tensor(image.clone().detach().requires_grad_(True), \
-                                                   dtype=torch.float32, requires_grad=True).to(self.device)).mode()
-                    self.latent_list.append(latent)
+                                                   dtype=torch.float32, requires_grad=True)).mode()
+                    self.latent_list.append(latent.to('cpu'))
                     
                 else:
                     continue
@@ -114,4 +114,4 @@ class DataCreator():
         
         assert u.shape == v.shape, f'seg_latent.shape={seg_latent.shape}, latent.shape={latent.shape}'
         
-        return {'latent-feature':u, 'segmentation': v}
+        return {'latent-feature':u.to(self.device), 'segmentation': v.to(self.device)}

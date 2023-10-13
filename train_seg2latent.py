@@ -52,6 +52,7 @@ def load_resume_state(name='seg-sam', auto_resume=True):
     if resume_state_path is None:
         resume_state = None
     else:
+        print('HERE')
         device_id = torch.cuda.current_device()
         resume_state = torch.load(resume_state_path, map_location=lambda storage, loc: storage.cuda(device_id))
     return resume_state
@@ -78,9 +79,11 @@ def main():
     bsize = 6
     num_workers = 25
     save_path = '../Train/'
-    print_fq = 100
-    save_fq = 100
-    N = 3000
+    
+    print_fq = 1
+    save_fq = 50
+    N = 2000
+    
     local_rank = 0
     device_nums = 2
     
@@ -103,7 +106,7 @@ def main():
         'config': './configs/ip2p-ddim.yaml',
         'sd_ckpt': './checkpoints/v1-5-pruned-emaonly.ckpt',
         'vae_ckpt': None,
-        'sam_ckpt': '../autodl-tmp/SAM/sam_vit_h_4b8939.pth',
+        'sam_ckpt': '../SAM/sam_vit_h_4b8939.pth',
         'sam_type': 'vit_h',
         'device': device
     }
@@ -172,29 +175,32 @@ def main():
 
     experiments_root = osp.join('experiments', 'seg-sam-training')
     # resume state
-    resume_state = load_resume_state()
-    if resume_state is None:
-        mkdir_and_rename(experiments_root)
-        start_epoch = 0
-        current_iter = 0
-        # WARNING: should not use get_root_logger in the above codes, including the called functions
-        # Otherwise the logger will not be properly initialized
-        log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
-        logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-        logger.info(get_env_info())
-        logger.info(dict2str(configs))
-    else:
-        # WARNING: should not use get_root_logger in the above codes, including the called functions
-        # Otherwise the logger will not be properly initialized
-        log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
-        logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-        logger.info(get_env_info())
-        logger.info(dict2str(configs))
-        resume_optimizers = resume_state['optimizers']
-        optimizer.load_state_dict(resume_optimizers)
-        logger.info(f"Resuming training from epoch: {resume_state['epoch']}, " f"iter: {resume_state['iter']}.")
-        start_epoch = resume_state['epoch']
-        current_iter = resume_state['iter']
+    log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
+    logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
+    current_iter = 0
+    # resume_state = load_resume_state()
+    # if resume_state is None:
+    #     mkdir_and_rename(experiments_root)
+    #     start_epoch = 0
+    #     current_iter = 0
+    #     # WARNING: should not use get_root_logger in the above codes, including the called functions
+    #     # Otherwise the logger will not be properly initialized
+    #     log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
+    #     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
+    #     logger.info(get_env_info())
+    #     logger.info(dict2str(configs))
+    # else:
+    #     # WARNING: should not use get_root_logger in the above codes, including the called functions
+    #     # Otherwise the logger will not be properly initialized
+    #     log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
+    #     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
+    #     logger.info(get_env_info())
+    #     logger.info(dict2str(configs))
+    #     resume_optimizers = resume_state['optimizers']
+    #     optimizer.load_state_dict(resume_optimizers)
+    #     logger.info(f"Resuming training from epoch: {resume_state['epoch']}, " f"iter: {resume_state['iter']}.")
+    #     start_epoch = resume_state['epoch']
+    #     current_iter = resume_state['iter']
 
     # copy the yml file to the experiment root
     # from shutil import copyfile
@@ -202,7 +208,7 @@ def main():
     # copyfile(config, experiments_root + '/')
 
     # training
-    logger.info(f'Start training from epoch: {start_epoch}, iter: {current_iter}')
+    logger.info(f'Start training from epoch: 0, iter: {current_iter}')
     
 
     for epoch in range(N):
@@ -220,6 +226,9 @@ def main():
             cin, cout = data['segmentation'], data['latent-feature']
             cin = torch.tensor(cin.squeeze(), dtype=torch.float32, requires_grad=True)
             cout = torch.tensor(cout.squeeze(), dtype=torch.float32, requires_grad=True)
+            
+            if np.any(np.isnan(cin)) or np.any(np.isnan(cout)):
+                continue
             
             assert cin.shape == cout.shape, f'cin.shape = {cin.shape}, cout.shape = {cout.shape}'
             
