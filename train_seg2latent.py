@@ -97,7 +97,6 @@ def main():
         
         torch.backends.cudnn.benchmark = True
         device = 'cuda'
-        # torch.cuda.set_device(local_rank)
         
     
     loader_params = {
@@ -143,8 +142,6 @@ def main():
     
     with torch.no_grad():
         data_creator.MakeData()
-        # print(len(data_creator))
-        # print(data_creator[0]['Latent'].shape, data_creator[0]['SAM'].shape)
     print(f'loading data with length: {len(data_creator)}')
     
     train_sampler = None if single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
