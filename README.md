@@ -6,9 +6,9 @@
 ### environment variables
 
 ```bash
-export RANK=0
-export CUDA_VISIBLE_DEVICES=... # (your gpus rank)
-export IMAGE_FOLDER=... # (your dataset path)
+export RANK=0,1,2
+export CUDA_VISIBLE_DEVICES=0,1,2 # (your gpus rank)
+export IMAGE_FOLDER="../autodl-tmp/..." # (your dataset path)
 ```
 
 install nccl dependencies

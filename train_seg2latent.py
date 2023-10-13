@@ -62,13 +62,13 @@ def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
     
     config = OmegaConf.load(config)
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt) 
-    sam.to(device)
-    mask_generator = SamAutomaticMaskGenerator(sam).generate
+    sam.eval().to(device)
+    
     model = load_model_from_config(config, sd_ckpt, vae_ckpt)
     model.eval().to(device)
     # encoder = model.encode_first_stage
 
-    return model, mask_generator, config
+    return model, sam, config
 
 def main():
     single_gpu = False
@@ -82,14 +82,22 @@ def main():
     save_fq = 100
     N = 3000
     local_rank = 0
+    device_nums = 2
     
     if not single_gpu:
-        init_dist('pytorch')
+        
+        import torch.multiprocessing as mp
+        import torch.distributed as dist
+        if mp.get_start_method(allow_none=True) is None:
+            mp.set_start_method('spawn')
+        rank = int(os.environ['RANK'])
+        num_gpus = torch.cuda.device_count()
+        torch.cuda.set_device(rank % num_gpus)
+        dist.init_process_group(backend='nccl')
+        
         torch.backends.cudnn.benchmark = True
         device = 'cuda'
-        torch.cuda.set_device(0)
-        torch.cuda.set_device(1)
-        torch.cuda.set_device(2)
+        # torch.cuda.set_device(local_rank)
         
     
     loader_params = {
@@ -116,12 +124,12 @@ def main():
             sam_model,
             device_ids=[local_rank], output_device=local_rank)
         # sam_model.to(device)
-    
+    mask_generator = SamAutomaticMaskGenerator(sam_model if single_gpu else sam_model.module).generate
     data_creator_params = {
         # 'image_folder': '../COCO/train2017/train2017/',
-        'image_folder': '../autodl-tmp/val2017/',
-        'encoder': model.encoder_model if single_gpu else model.module.encoder_model,
-        'sam': sam_model if single_gpu else sam_model.module,
+        'image_folder': (str)(os.environ['IMAGE_FOLDER']),
+        'encoder': model.encode_first_stage if single_gpu else model.module.encode_first_stage,
+        'sam': mask_generator,
         'batch_size': 1,
         'downsample_factor': 8
     }
