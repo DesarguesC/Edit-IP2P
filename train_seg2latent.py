@@ -22,40 +22,28 @@ from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamP
 
 
 
-def mkdir_and_rename(path):
-    """mkdirs. If path exists, rename it with timestamp and create a new one.
-
-    Args:
-        path (str): Folder path.
-    """
-    if osp.exists(path):
-        new_name = path + '_archived_' + get_time_str()
-        print(f'Path already exists. Rename it to {new_name}', flush=True)
-        os.rename(path, new_name)
+def mkdir(path: str) -> str:
+    if not os.exists(path):
+        os.makedirs(path)
+    base_count = len(os.listdir(path)) if os.exists(path) else 0
+    path = osp.join(path, f'{base_count:05}')
+    
+    while True:
+        """
+            Concurrency:
+                when using multi-gpu
+        """
+        if not os.exists(path):
+            os.mkdirs(path)
+            break
+        else:
+            base_count += 1
+            
     os.makedirs(path, exist_ok=True)
     os.makedirs(osp.join(path, 'models'))
     os.makedirs(osp.join(path, 'training_states'))
     os.makedirs(osp.join(path, 'visualization'))
-
-
-def load_resume_state(name='seg-sam', auto_resume=True):
-    resume_state_path = None
-    if auto_resume:
-        state_path = osp.join('experiments', name, 'training_states')
-        if osp.isdir(state_path):
-            states = list(scandir(state_path, suffix='state', recursive=False, full_path=False))
-            if len(states) != 0:
-                states = [float(v.split('.state')[0]) for v in states]
-                resume_state_path = osp.join(state_path, f'{max(states):.0f}.state')
-                # opt.resume_state_path = resume_state_path
-
-    if resume_state_path is None:
-        resume_state = None
-    else:
-        print('HERE')
-        device_id = torch.cuda.current_device()
-        resume_state = torch.load(resume_state_path, map_location=lambda storage, loc: storage.cuda(device_id))
-    return resume_state
+    return path
 
 
 def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
@@ -72,20 +60,26 @@ def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
     return model, sam, config
 
 def main():
+    base_count = 0
     single_gpu = False
     config = './configs/ip2p-ddim.yaml',
-    name = 'seg-sam-train'
+    name = 'seg'
     learning_rate = 1.0e-04
     bsize = 6
     num_workers = 25
-    save_path = '../Train/'
+    experiments_root = './experiments/'
+    
+    experiments_root = mkdir(experiments_root)
+    log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
+    logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     
     print_fq = 1
     save_fq = 50
-    N = 2000
+    N = 200
     
     local_rank = 0
     device_nums = 2
+    device = 'cuda'
     
     if not single_gpu:
         
@@ -99,7 +93,6 @@ def main():
         dist.init_process_group(backend='nccl')
         
         torch.backends.cudnn.benchmark = True
-        device = 'cuda'
         
     
     loader_params = {
@@ -128,9 +121,9 @@ def main():
         # sam_model.to(device)
     mask_generator = SamAutomaticMaskGenerator(sam_model if single_gpu else sam_model.module).generate
     data_creator_params = {
-        # 'image_folder': '../COCO/train2017/train2017/',
+        # 'image_folder': '../test-dataset/',
         'image_folder': (str)(os.environ['IMAGE_FOLDER']),
-        'encoder': model.encode_first_stage if single_gpu else model.module.encode_first_stage,
+        'encoder': model.first_stage_model if single_gpu else model.module.first_stage_model,
         'sam': mask_generator,
         'batch_size': 1,
         'downsample_factor': 8
@@ -145,7 +138,7 @@ def main():
     
     with torch.no_grad():
         data_creator.MakeData()
-    print(f'loading data with length: {len(data_creator)}')
+    print(f'Randomly loading data with length: {len(data_creator)}')
     
     train_sampler = None if single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
 
@@ -165,52 +158,16 @@ def main():
         pm_,
         device_ids=[local_rank],
         output_device=local_rank)
-    # pm_.to(device)
-
 
 
     # optimizer
     params = list(pm_.parameters() if single_gpu else pm_.module.parameters())
     optimizer = torch.optim.AdamW(params, lr=learning_rate)
 
-    experiments_root = osp.join('experiments', 'seg-sam-training')
-    # resume state
-    log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
-    logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     current_iter = 0
-    # resume_state = load_resume_state()
-    # if resume_state is None:
-    #     mkdir_and_rename(experiments_root)
-    #     start_epoch = 0
-    #     current_iter = 0
-    #     # WARNING: should not use get_root_logger in the above codes, including the called functions
-    #     # Otherwise the logger will not be properly initialized
-    #     log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
-    #     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-    #     logger.info(get_env_info())
-    #     logger.info(dict2str(configs))
-    # else:
-    #     # WARNING: should not use get_root_logger in the above codes, including the called functions
-    #     # Otherwise the logger will not be properly initialized
-    #     log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
-    #     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-    #     logger.info(get_env_info())
-    #     logger.info(dict2str(configs))
-    #     resume_optimizers = resume_state['optimizers']
-    #     optimizer.load_state_dict(resume_optimizers)
-    #     logger.info(f"Resuming training from epoch: {resume_state['epoch']}, " f"iter: {resume_state['iter']}.")
-    #     start_epoch = resume_state['epoch']
-    #     current_iter = resume_state['iter']
-
-    # copy the yml file to the experiment root
-    # from shutil import copyfile
-    # print(experiments_root)
-    # copyfile(config, experiments_root + '/')
-
-    # training
     logger.info(f'Start training from epoch: 0, iter: {current_iter}')
     
-
+    # training
     for epoch in range(N):
         # train_dataloader.sampler.set_epoch(epoch)
         # train
@@ -227,7 +184,7 @@ def main():
             cin = torch.tensor(cin.squeeze(), dtype=torch.float32, requires_grad=True)
             cout = torch.tensor(cout.squeeze(), dtype=torch.float32, requires_grad=True)
             
-            if np.any(np.isnan(cin)) or np.any(np.isnan(cout)):
+            if np.any(np.isnan(cin.detach().numpy())) or np.any(np.isnan(cout.detach().numpy())):
                 continue
             
             assert cin.shape == cout.shape, f'cin.shape = {cin.shape}, cout.shape = {cout.shape}'
@@ -235,8 +192,8 @@ def main():
             optimizer.zero_grad()
             pm_.zero_grad()
 
-            pred = pm_(cin) if single_gpu else pm_.module(cin)
-            kl_loss_sum = kl_div(pred, cout, reduction='sum', log_target=True)
+            pred = pm_(cin.to(device)) if single_gpu else pm_.module(cin.to(device))
+            kl_loss_sum = kl_div(pred, cout.to(device), reduction='sum', log_target=True)
             kl_loss_sum.backward()
             optimizer.step()
 

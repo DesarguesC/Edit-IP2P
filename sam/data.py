@@ -5,6 +5,7 @@ from stable_diffusion.ldm.util_ddim import load_img as loads
 from basicsr import img2tensor, tensor2img
 from einops import repeat, rearrange
 from tqdm import tqdm
+from random import randint
 # from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 
@@ -42,13 +43,14 @@ def get_masked_Image(seg: list = None, no_color: bool = False, use_alpha=True):
 # Considering some little differences between generated and ground truth contributions
 
 class DataCreator():
-    def __init__(self, image_folder: any = None, encoder: any = None, sam: any = None, batch_size: int = 1, downsample_factor=8):
+    def __init__(self, image_folder: any = None, encoder: any = None, sam: any = None, batch_size: int = 1, downsample_factor=8, data_scale=0.4):
         assert isinstance(image_folder, list) or isinstance(image_folder, str), 'path error when getting DataCreator initialized'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.path = image_folder if isinstance(image_folder, list) else [image_folder]
         self.latent_encoder = encoder
         self.sam = sam
         self.factor = downsample_factor
+        self.data_scale = data_scale
 
         """
             Before DataCreator Declaration:
@@ -74,26 +76,28 @@ class DataCreator():
             iter_ = tqdm(dir, desc=f'Adding Images in Folder to the list: [{i+1}|{len(self.path)}]', total=len(dir))
             for j, file in enumerate(iter_):
                 if file.endswith('.png') or file.endswith('.jpg'):
-                    
+                    xx = randint(0,5000)
+                    if xx > self.data_scale * 5000:
+                        continue
                     file = os.path.join(folder, file)  # absolute file path
                     image, _ = loads(opt=None, path=file)
                     seg = np.array(image.astype(np.uint8))
                     seg = self.sam(seg)
                     seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False)).to(self.device)
                     seg = rearrange(seg, "h w c -> 1 c h w")
-                    seg_latent = self.latent_encoder(torch.tensor(seg.clone().detach().requires_grad_(True), \
-                                                                   dtype=torch.float32, requires_grad=True)).mode()
-                    seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size)
-                    self.seg_list.append(image.to('cpu'))
+                    seg_latent = self.latent_encoder(torch.tensor(seg.clone().detach().requires_grad_(False), \
+                                                                   dtype=torch.float32, requires_grad=False))[0]
+                    seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size).to('cpu')
+                    self.seg_list.append(seg_latent)
                     
                     image = np.array(image).astype(np.float32) / 255.0
                     image = image[None].transpose(0, 3, 1, 2)
                     image = torch.from_numpy(image)
-                    image = repeat(image, "1 ... -> b ...", b=self.batch_size)
+                    image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(device)
                     # print(type(image))
-                    latent = self.latent_encoder(torch.tensor(image.clone().detach().requires_grad_(True), \
-                                                   dtype=torch.float32, requires_grad=True)).mode()
-                    self.latent_list.append(latent.to('cpu'))
+                    latent = self.latent_encoder(torch.tensor(image.clone().detach().requires_grad_(False), \
+                                                   dtype=torch.float32, requires_grad=False))[0].to('cpu')
+                    self.latent_list.append(latent)
                     
                 else:
                     continue
@@ -111,7 +115,8 @@ class DataCreator():
     def __getitem__(self, item):
         i = self.data_dict_list[item]
         u, v = i['latent-feature'], i['segmentation']
+        *_, h, w = v.shape
+        v = v.reshape((-1, 3, h, w))
+        assert u.shape == v.shape, f'seg_latent.shape={v.shape}, latent.shape={u.shape}'
         
-        assert u.shape == v.shape, f'seg_latent.shape={seg_latent.shape}, latent.shape={latent.shape}'
-        
-        return {'latent-feature':u.to(self.device), 'segmentation': v.to(self.device)}
+        return {'latent-feature':u, 'segmentation': v}
