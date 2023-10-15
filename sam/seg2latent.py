@@ -68,9 +68,7 @@ class ProjectionTo():
         if torch.cuda.is_available(): self.pm = self.pm.to(self.device)
         self.pm.eval()
 
-    def load_img(self, Path: str = None, Train: bool = True, max_resolution: int = 512 * 512) -> torch.Tensor:
-        import math
-
+    def load_img(self, Path: str = None, Train: bool = True, max_resolution: int = 512 * 512) -> np.array:
         if Path is not None:
             assert os.path.isfile(Path)
             import math
@@ -87,10 +85,6 @@ class ProjectionTo():
 
             image = cv2.resize(np.asarray(image, dtype=np.float32), (w, h), interpolation=cv2.INTER_LANCZOS4)
 
-
-            # image = ( np.array(image).astype(np.float32) / 255.0 )[None].transpose(0, 3, 1, 2)
-            # image = torch.from_numpy(image)
-
             return image
 
 
@@ -102,18 +96,16 @@ class ProjectionTo():
         elif Type == 'seg':
             R3 = np.array(R3.astype(np.uint8))
             return get_masked_Image(self.sam(R3)).to(self.device)
-        # visible mask image
+        # visible mask image, np.array type, not torch.tensor
         elif Type == 'latent':
             image = ( np.array(R3).astype(np.float32) / 255.0 )[None].transpose(0, 3, 1, 2)
             image = 2. * torch.from_numpy(image) - 1.
-            image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(self.device)
-            image = torch.tensor(image.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False)
+            image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(self.device).clone().detach().requires_grad_(False).to(torch.float32)
             return self.model.get_first_stage_encoding(self.model.encode_first_stage(image)).to(self.device)
         elif Type == 'seg-latent':
             R3 = np.array(R3.astype(np.uint8))
-            seg = torch.from_numpy(get_masked_Image(self.sam(R3)).to(self.device))
-            seg = rearrange(seg, "h w c -> 1 c h w")
-            seg = torch.tensor(seg.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False)
+            seg = 2. * torch.from_numpy(get_masked_Image(self.sam(R3)).to(self.device)) - 1.
+            seg = rearrange(seg, "h w c -> 1 c h w").clone().detach().requires_grad_(False).to(torch.float32)
             seg_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(seg))
             seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size).to(self.device)
             return seg_latent

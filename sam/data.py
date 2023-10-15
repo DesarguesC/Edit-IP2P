@@ -89,7 +89,8 @@ class DataCreator():
                     
                     image = np.array(image).astype(np.float32) / 255.0
                     image = image[None].transpose(0, 3, 1, 2)
-                    image = torch.from_numpy(image)
+                    image = 2. * torch.from_numpy(image) - 1.
+                    # image = torch.from_numpy(image)           # ===> Wrongly Calculated !
                     image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(self.device).clone().detach().requires_grad_(False).to(torch.float32)
                     latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(image)).to('cpu')
                     self.latent_list.append(latent)
