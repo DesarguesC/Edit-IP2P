@@ -11,7 +11,6 @@ from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, 
     latent space    <---------      latent segmentation
 
 
-
 """
 
 
@@ -48,6 +47,6 @@ class ProjectionModel(nn.Module):
         return x3
 
 
-
+class 
 
 
