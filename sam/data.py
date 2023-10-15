@@ -80,11 +80,9 @@ class DataCreator():
                         continue
                     file = os.path.join(folder, file)  # absolute file path
                     image, _ = loads(opt=None, path=file)
-                    seg = np.array(image.astype(np.uint8))
-                    seg = self.sam(seg)
+                    seg = self.sam(np.array(image.astype(np.uint8)))
                     seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False)).to(self.device)
-                    seg = rearrange(seg, "h w c -> 1 c h w")
-                    seg = torch.tensor(seg.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False)
+                    seg = rearrange(seg, "h w c -> 1 c h w").clone().detach().requires_grad_(False).to(torch.float32)
                     seg_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(seg))
                     seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size).to('cpu')
                     self.seg_list.append(seg_latent)
@@ -92,9 +90,7 @@ class DataCreator():
                     image = np.array(image).astype(np.float32) / 255.0
                     image = image[None].transpose(0, 3, 1, 2)
                     image = torch.from_numpy(image)
-                    image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(self.device)
-                    image = torch.tensor(image.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False)
-                    # print(type(image))
+                    image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(self.device).clone().detach().requires_grad_(False).to(torch.float32)
                     latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(image)).to('cpu')
                     self.latent_list.append(latent)
                     
