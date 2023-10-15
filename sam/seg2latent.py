@@ -1,19 +1,23 @@
 from torch import nn
-import torch
+import numpy as np
+import torch, os, cv2
+from PIL import Image
 # from stable_diffusion.ldm.modules.attention import LinearAttention as la
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, Downsample
+from stable_diffusion.ldm.util_ddim import get_resize_shape
 from sam.data import get_masked_Image
 """
                        SAM
-        R^3         --------->      segmentation space
+        R^3         --------->      segmentation space  (1,3,h,w)
          |                                  |
     D(·) | E(·)                        D(·) | E(·) 
          |       feature extractor          |
     latent space    <---------      latent segmentation
-
+     (1,4,h,w)                           (1,4,h,w)
 
 """
+
 
 
 class ProjectionModel(nn.Module):
@@ -49,8 +53,53 @@ class ProjectionModel(nn.Module):
         return x3
 
 
-class Projection(ProjectionModel):
-    def __init__(self, sam_model_path, sam_model_type, sd_model, dim=4, dropout=0.5):
-        super().__init__(dim=dim, dropout=dropout)
-        self.sam =
+class ProjectionTo():
+    def __init__(self, sam_model, sd_model, pth_path, device='cuda'):
+        self.pm = ProjectionModel()
+        state_dict = torch.load(pth_path)
+        self.pm.load_state_dict(state_dict)
+
+        self.device = device
+
+        # sam: mask_generator = SamAutomaticMaskGenerator(sam_model if single_gpu else sam_model.module).generate
+        self.sam = sam_model
+        self.model = sd_model
+        if torch.cuda.is_available(): self.pm = self.pm.to(self.device)
+        self.pm.eval()
+
+    def load_img(self, Path: str = None, Train: bool = True, max_resolution: int = 512 * 512) -> torch.Tensor:
+        import math
+
+        if Path is not None:
+            assert os.path.isfile(Path)
+            import math
+            hhh = (int)(math.sqrt(max_resolution))
+            image = torch.randn((1, 3, hhh, hhh), device=self.device)
+            return 2. * image - 1.
+        else:
+            image = Image.open(Path).convert("RGB")
+            if Train or Path is None:
+                w = h = 512
+            else:
+                w, h = image.size
+                h, w = get_resize_shape((h, w), max_resolution=max_resolution, resize_short_edge=None)
+
+            image = cv2.resize(np.asarray(image, dtype=np.float32), (w, h), interpolation=cv2.INTER_LANCZOS4)
+            image = ( np.array(image).astype(np.float32) / 255.0 )[None].transpose(0, 3, 1, 2)
+            image = torch.from_numpy(image)
+
+            return 2. * image - 1.
+
+
+    def MapsTo(self, Path: str = None, Type: str = None, Train: bool = True, max_resolution: int = 512*512):
+        assert Type in [None, 'R^3', 'seg', 'latent', 'latent-seg']
+        R3 = self.load_img(Path, Type, Train, max_resolution)
+        if Type == 'R^3':
+            return R3
+        elif Type == 'seg':
+            R3 =
+            return get_masked_Image(self.sam(R3)).to(self.device)
+        elif Type == 'latent':
+            return self.model.get_first_stage_encoding(self.model.encode_first_stage(R3)).to(self.device)
+
 
