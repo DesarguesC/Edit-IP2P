@@ -24,9 +24,9 @@ from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamP
 
 
 def mkdir(path: str) -> str:
-    if not os.exists(path):
+    if not osp.exists(path):
         os.makedirs(path)
-    base_count = len(os.listdir(path)) if os.exists(path) else 0
+    base_count = len(os.listdir(path)) if osp.exists(path) else 0
     path = osp.join(path, f'{base_count:05}')
     
     while True:
@@ -34,8 +34,8 @@ def mkdir(path: str) -> str:
             Concurrency:
                 when using multi-gpu
         """
-        if not os.exists(path):
-            os.mkdirs(path)
+        if not osp.exists(path):
+            os.makedirs(path)
             break
         else:
             base_count += 1
@@ -45,6 +45,7 @@ def mkdir(path: str) -> str:
     os.makedirs(osp.join(path, 'training_states'))
     os.makedirs(osp.join(path, 'visualization'))
     return path
+
 
 
 
@@ -81,7 +82,7 @@ def main():
         num_gpus = torch.cuda.device_count()
         torch.cuda.set_device(rank % num_gpus)
         dist.init_process_group(backend='nccl')
-        
+        dist.barrier()
         torch.backends.cudnn.benchmark = True
         
     
@@ -89,7 +90,7 @@ def main():
         'config': './configs/ip2p-ddim.yaml',
         'sd_ckpt': './checkpoints/v1-5-pruned-emaonly.ckpt',
         'vae_ckpt': None,
-        'sam_ckpt': '../SAM/sam_vit_h_4b8939.pth',
+        'sam_ckpt': '../autodl-tmp/SAM/sam_vit_h_4b8939.pth',
         'sam_type': 'vit_h',
         'device': device
     }
@@ -97,7 +98,7 @@ def main():
     model, sam_model, configs = load_target_model(**loader_params)
     
     # device = torch.device("cuda:0,1,2" if torch.cuda.is_available() else "cpu")
-    
+    # torch.nn.parallel.DistributedDataParallel
     if not single_gpu:
         model = torch.nn.parallel.DistributedDataParallel(
             model,
