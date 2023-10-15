@@ -1,6 +1,6 @@
 import importlib
 import math
-
+from omegaconf import OmegaConf
 import cv2
 import torch
 import numpy as np
@@ -10,6 +10,8 @@ from safetensors.torch import load_file
 
 from inspect import isfunction
 from PIL import Image, ImageDraw, ImageFont
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+
 
 
 def DEFAULT_NEGATIVE_PROMPT() -> str:
@@ -251,7 +253,18 @@ def fix_cond_shapes(model, prompt_condition, uc):
     return prompt_condition, uc
 
 
+def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
+    print('loading configs...')
 
+    config = OmegaConf.load(config)
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
+    sam.eval().to(device)
+
+    model = load_model_from_config(config, sd_ckpt, vae_ckpt)
+    model.eval().to(device)
+    # encoder = model.encode_first_stage
+
+    return model, sam, config
 
 
 def load_img(opt=None, path=None):

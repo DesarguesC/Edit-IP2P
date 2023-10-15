@@ -7,13 +7,14 @@ from torch.nn.functional import kl_div
 sys.path.append('../')
 sys.path.append('./stable_diffusion')
 
+from stable_diffusion.ldm.util_ddim import load_target_model
 import os.path as osp
 from basicsr.utils import (get_env_info, get_root_logger, get_time_str,
                            scandir, tensor2img)
 from basicsr.utils.options import copy_opt_file, dict2str
 import logging
 from sam.dist_util import init_dist, master_only, get_bare_model, get_dist_info
-from omegaconf import OmegaConf
+
 from sam.seg2latent import ProjectionModel as PM
 from sam.data import DataCreator
 from stable_diffusion.ldm.util_ddim import load_model_from_config
@@ -46,18 +47,7 @@ def mkdir(path: str) -> str:
     return path
 
 
-def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
-    print('loading configs...')
-    
-    config = OmegaConf.load(config)
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt) 
-    sam.eval().to(device)
-    
-    model = load_model_from_config(config, sd_ckpt, vae_ckpt)
-    model.eval().to(device)
-    # encoder = model.encode_first_stage
 
-    return model, sam, config
 
 def main():
     base_count = 0

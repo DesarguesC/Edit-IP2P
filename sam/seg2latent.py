@@ -1,7 +1,9 @@
 from torch import nn
 import torch
 # from stable_diffusion.ldm.modules.attention import LinearAttention as la
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, Downsample
+from sam.data import get_masked_Image
 """
                        SAM
         R^3         --------->      segmentation space
@@ -39,14 +41,16 @@ class ProjectionModel(nn.Module):
     def forward(self, x):
         # x: 64 * 64
         assert len(x.shape) == 4, f'forward input shape = {x.shape}'
-        x0 = self.up(x)                                        # x0: 128 * 128
-        x1 = self.conv2(x0) + x0                               # x1: 128 * 128
-        x2 = self.conv1(self.down(x1))                        # x3: 64 * 64
-        x3 = self.conv1(x2)                                     # x4: 64 * 64
+        x0 = self.up(x)                                         # x0: 128 * 128
+        x1 = self.conv2(x0) + x0                                # x1: 128 * 128
+        x2 = self.conv1(self.down(x1))                          # x2: 64 * 64
+        x3 = self.conv1(x2)                                     # x3: 64 * 64
 
         return x3
 
 
-class 
-
+class Projection(ProjectionModel):
+    def __init__(self, sam_model_path, sam_model_type, sd_model, dim=4, dropout=0.5):
+        super().__init__(dim=dim, dropout=dropout)
+        self.sam =
 
