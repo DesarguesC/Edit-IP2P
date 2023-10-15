@@ -2,6 +2,7 @@ from torch import nn
 import numpy as np
 import torch, os, cv2
 from PIL import Image
+from einops import repeat, rearrange
 # from stable_diffusion.ldm.modules.attention import LinearAttention as la
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, Downsample
@@ -74,8 +75,8 @@ class ProjectionTo():
             assert os.path.isfile(Path)
             import math
             hhh = (int)(math.sqrt(max_resolution))
-            image = torch.randn((1, 3, hhh, hhh), device=self.device)
-            return 2. * image - 1.
+            image = torch.randn((1, 3, hhh, hhh), device=self.device) * 255.
+            return image
         else:
             image = Image.open(Path).convert("RGB")
             if Train or Path is None:
@@ -85,21 +86,35 @@ class ProjectionTo():
                 h, w = get_resize_shape((h, w), max_resolution=max_resolution, resize_short_edge=None)
 
             image = cv2.resize(np.asarray(image, dtype=np.float32), (w, h), interpolation=cv2.INTER_LANCZOS4)
-            image = ( np.array(image).astype(np.float32) / 255.0 )[None].transpose(0, 3, 1, 2)
-            image = torch.from_numpy(image)
 
-            return 2. * image - 1.
+
+            # image = ( np.array(image).astype(np.float32) / 255.0 )[None].transpose(0, 3, 1, 2)
+            # image = torch.from_numpy(image)
+
+            return image
 
 
     def MapsTo(self, Path: str = None, Type: str = None, Train: bool = True, max_resolution: int = 512*512):
         assert Type in [None, 'R^3', 'seg', 'latent', 'latent-seg']
         R3 = self.load_img(Path, Type, Train, max_resolution)
         if Type == 'R^3':
-            return R3
+            return np.array(R3.astype(np.uint8))
         elif Type == 'seg':
-            R3 =
+            R3 = np.array(R3.astype(np.uint8))
             return get_masked_Image(self.sam(R3)).to(self.device)
+        # visible mask image
         elif Type == 'latent':
-            return self.model.get_first_stage_encoding(self.model.encode_first_stage(R3)).to(self.device)
-
+            image = ( np.array(R3).astype(np.float32) / 255.0 )[None].transpose(0, 3, 1, 2)
+            image = 2. * torch.from_numpy(image) - 1.
+            image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(self.device)
+            image = torch.tensor(image.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False)
+            return self.model.get_first_stage_encoding(self.model.encode_first_stage(image)).to(self.device)
+        elif Type == 'seg-latent':
+            R3 = np.array(R3.astype(np.uint8))
+            seg = torch.from_numpy(get_masked_Image(self.sam(R3)).to(self.device))
+            seg = rearrange(seg, "h w c -> 1 c h w")
+            seg = torch.tensor(seg.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False)
+            seg_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(seg))
+            seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size).to(self.device)
+            return seg_latent
 
