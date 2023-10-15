@@ -24,7 +24,7 @@ from sam.data import get_masked_Image
 class ProjectionModel(nn.Module):
     # projection via one-shot learning
     # to extract latent feature from segmentation gaining from SAM
-    def __init__(self, dim=4, dropout=0.5):
+    def __init__(self, dim=4, dropout=0.5, use_conv=True):
         # seg 2 latent | judge in latent space
         # channel => dim
         super().__init__()
@@ -32,26 +32,41 @@ class ProjectionModel(nn.Module):
         self.dim = dim
         self.dropout = dropout
 
-        self.down = Downsample(channels=dim, use_conv=False)    # decline two times via pool, keep channels
-        self.up = Upsample(channels=dim, use_conv=True)         # expand two times via conv, keep channels
+        self.down = Downsample(channels=dim, use_conv=use_conv)    # decline two times via pool, keep channels
+        self.up = Upsample(channels=dim, use_conv=use_conv)         # expand two times via conv, keep channels
 
         self.conv1 = nn.Conv2d(self.dim, self.dim, kernel_size=1, stride=1, padding=0)
         self.conv2 = nn.Sequential(
             nn.Conv2d(self.dim, self.dim, kernel_size=3, stride=1, padding=1),
-            nn.Dropout(self.dropout)
+            nn.Dropout(self.dropout),
+            nn.BarchNorm2d(self.dim)
+        )        
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(self.dim, 2 * self.dim, kernel_size=1, stride=1, padding=1),
+            nn.Dropout(self.dropout),
+            nn.BatchNorm2d(2 * self.dim),
+            nn.Conv2d(2 * self.dim, self.dim, kernel_size=2, stride=1, padding=0),
+            nn.BatchNorm2d(self.dim),
+            nn.Conv2d(2 * self.dim, self.dim, kernel_size=2, stride=1, padding=0),
+            nn.BatchNorm2d(self.dim)
         )
+        self.conv4 = nn.Conv2d(2 * self.dim, self.dim, kernel_size=3, stride=1, padding=1)
 
-        self.conv3 = nn.Conv2d(self.dim, self.dim, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         # x: 64 * 64
         assert len(x.shape) == 4, f'forward input shape = {x.shape}'
-        x0 = self.up(x)                                         # x0: 128 * 128
-        x1 = self.conv2(x0) + x0                                # x1: 128 * 128
-        x2 = self.conv1(self.down(x1))                          # x2: 64 * 64
-        x3 = self.conv1(x2)                                     # x3: 64 * 64
+        x0 = self.up(x)                                         # x0: 4 * 128 * 128
+        y0 = self.up(x0)                                        # y0: 4 * 256 * 256
+        x1 = self.conv2(x0) + x0                                # x1: 4 * 128 * 128
+        y1 = self.up(x1)                                        # y1: 4 * 256 * 256
+        x2 = self.conv4(torch.cat([x0, x1], dim = 1))           # x2: 4 * 128 * 128
+        y2 = self.down(self.conv2(y1))                          # y2: 4 * 128 * 128
+        y3 = self.conv3(y2)                                     # y3: 4 * 128 * 128
+        
+        xy = self.down(y3) + self.down(x2) + x
 
-        return x3
+        return xy
 
 
 class ProjectionTo():
