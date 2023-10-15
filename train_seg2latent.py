@@ -123,7 +123,7 @@ def main():
     data_creator_params = {
         # 'image_folder': '../test-dataset/',
         'image_folder': (str)(os.environ['IMAGE_FOLDER']),
-        'encoder': model.first_stage_model if single_gpu else model.module.first_stage_model,
+        'sd_model': model if single_gpu else model.module,
         'sam': mask_generator,
         'batch_size': 1,
         'downsample_factor': 8

@@ -43,11 +43,11 @@ def get_masked_Image(seg: list = None, no_color: bool = False, use_alpha=True):
 # Considering some little differences between generated and ground truth contributions
 
 class DataCreator():
-    def __init__(self, image_folder: any = None, encoder: any = None, sam: any = None, batch_size: int = 1, downsample_factor=8, data_scale=0.4):
+    def __init__(self, image_folder: any = None, sd_model: any = None, sam: any = None, batch_size: int = 1, downsample_factor=8, data_scale=0.4):
         assert isinstance(image_folder, list) or isinstance(image_folder, str), 'path error when getting DataCreator initialized'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.path = image_folder if isinstance(image_folder, list) else [image_folder]
-        self.latent_encoder = encoder
+        self.model = sd_model
         self.sam = sam
         self.factor = downsample_factor
         self.data_scale = data_scale
@@ -85,8 +85,8 @@ class DataCreator():
                     seg = self.sam(seg)
                     seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False)).to(self.device)
                     seg = rearrange(seg, "h w c -> 1 c h w")
-                    seg_latent = self.latent_encoder(torch.tensor(seg.clone().detach().requires_grad_(False), \
-                                                                   dtype=torch.float32, requires_grad=False))[0]
+                    seg_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(\
+                                              torch.tensor(seg.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False)))
                     seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size).to('cpu')
                     self.seg_list.append(seg_latent)
                     
@@ -95,8 +95,8 @@ class DataCreator():
                     image = torch.from_numpy(image)
                     image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(device)
                     # print(type(image))
-                    latent = self.latent_encoder(torch.tensor(image.clone().detach().requires_grad_(False), \
-                                                   dtype=torch.float32, requires_grad=False))[0].to('cpu')
+                    latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(\
+                                 torch.tensor(image.clone().detach().requires_grad_(False), dtype=torch.float32, requires_grad=False))).to('cpu')                                             
                     self.latent_list.append(latent)
                     
                 else:
@@ -115,8 +115,6 @@ class DataCreator():
     def __getitem__(self, item):
         i = self.data_dict_list[item]
         u, v = i['latent-feature'], i['segmentation']
-        *_, h, w = v.shape
-        v = v.reshape((-1, 3, h, w))
         assert u.shape == v.shape, f'seg_latent.shape={v.shape}, latent.shape={u.shape}'
         
         return {'latent-feature':u, 'segmentation': v}
