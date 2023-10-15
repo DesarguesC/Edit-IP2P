@@ -39,14 +39,14 @@ class ProjectionModel(nn.Module):
         self.conv2 = nn.Sequential(
             nn.Conv2d(self.dim, self.dim, kernel_size=3, stride=1, padding=1),
             nn.Dropout(self.dropout),
-            nn.BarchNorm2d(self.dim)
+            nn.BatchNorm2d(self.dim)
         )        
         self.conv3 = nn.Sequential(
             nn.Conv2d(self.dim, 2 * self.dim, kernel_size=1, stride=1, padding=1),
             nn.Dropout(self.dropout),
             nn.BatchNorm2d(2 * self.dim),
-            nn.Conv2d(2 * self.dim, self.dim, kernel_size=2, stride=1, padding=0),
-            nn.BatchNorm2d(self.dim),
+            nn.Conv2d(2 * self.dim, 2 * self.dim, kernel_size=2, stride=1, padding=0),
+            nn.BatchNorm2d(2 * self.dim),
             nn.Conv2d(2 * self.dim, self.dim, kernel_size=2, stride=1, padding=0),
             nn.BatchNorm2d(self.dim)
         )
