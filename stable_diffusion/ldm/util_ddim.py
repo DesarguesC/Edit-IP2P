@@ -281,7 +281,6 @@ def load_img(opt=None, path=None):
         import math
         opt.W = opt.H = w = h = (int)(math.sqrt(opt.max_resolution))
         image = torch.randn((1,3,w,h), device=opt.device)
-        image = torch.zeros_like(image, device=opt.device)
         return 2. * image - 1., opt
     
     image = Image.open(path).convert("RGB")
