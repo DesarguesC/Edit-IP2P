@@ -4,14 +4,14 @@ from sam.seg2latent import ProjectionTo
 from jieba import re
 from tqdm import tqdm
 
-def get_current_File(folder_path: str = None, base_path: str = None) -> dict[dict]:
+def get_current_File(folder_path: str = None, base_path: str = None) -> list:
 
     """
         folder_path is a folder (folder name is a bunch of number) under big folder 'clip-diltered' or 'randomly-sample'
         simultaneously, add base_path to create absolute path
 
         e.g.:       base_path = '../autodl-tmp/DATSETS/clip-filtered'
-                    folder_path = '0040048'
+                    folder_path = '0040048'         ->      in one 'shard' folder
 
                     return:   {
 
@@ -24,6 +24,9 @@ def get_current_File(folder_path: str = None, base_path: str = None) -> dict[dic
                                                 #following term
                     }
 
+        Just put all dict {'0':..., '1':..., 'edit-prompt':..., ...} in single list,
+        we only distinguish 'clip-filtered' and 'random-sample'
+        
     """
 
     assert folder_path != None, 'no input path'
@@ -80,6 +83,9 @@ class Ip2pDatasets(ProjectionTo):
         """
         self.single_gpu = single_gpu
         self.total_data_path_dict = {}
+        self.random_sample_list = self.clip_filtered_list = []
+        self.has_length = False
+        self.length = 0
 
 
     def make_total_path_intoDICT(self):
@@ -109,7 +115,36 @@ class Ip2pDatasets(ProjectionTo):
 
             self.total_data_path_dict[base_path] = shard_list
 
+
+
         return
+
+    def make_lenth(self):
+        tot_length = random_sample_length = clip_filtered_length = 0
+
+        clip_filtered = self.total_data_path_dict['clip-filtered']
+        random_sample = self.total_data_path_dict['random-sample']
+        for x in clip_filtered:
+            assert isinstance(x, list), 'x'
+            for u in x:
+                assert isinstance(u, dict), 'u'
+                tot_length += len(u)
+                clip_filtered_length += len(u)
+                self.clip_shard_length_list.append(len(u))
+
+        for x in random_sample:
+            assert isinstance(x, list), 'x'
+            for u in x:
+                assert isinstance(u, dict), 'u'
+                tot_length += len(u)
+                random_sample_length += len(u)
+                self.random_shard_length_list.append(len(u))
+
+        self.length = tot_length
+        self.random_sample_length = random_sample_length
+        self.clip_filtered_length = clip_filtered_length
+        self.has_length = True
+
 
     def MakeData(self):
         self.make_total_path_intoDICT()
@@ -124,13 +159,18 @@ class Ip2pDatasets(ProjectionTo):
         assert len(self.total_data_path_dict['clip-filtered']) == 30, f'len of clip-diltered: {len(clip_filtered)}'
         assert len(self.total_data_path_dict['random-sample']) == 30, f'len of random-sample: {len(random_sample)}'
 
+
+
         return
 
+
+
     def __len__(self):
-        length = 0
-
-
+        if not self.has_length: return 0
+        return self.length
 
 
     def __getitem__(self, item):
-
+        dataset = self.total_data_path_dict['clip-filtered'] if item < self.clip_filtered_length \
+                                else self.total_data_path_dict['random-sample']
+        assert isinstance(dataset, list)
