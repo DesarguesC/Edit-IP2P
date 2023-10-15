@@ -35,3 +35,7 @@ datasets==2.8.0
 seaborn
 openai
 basicsr==1.4.2
+
+-e git+https://github.com/facebookresearch/segment-anything.git@main#egg=segment-anything
+-e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
+-e git+https://github.com/openai/CLIP.git@main#egg=clip
