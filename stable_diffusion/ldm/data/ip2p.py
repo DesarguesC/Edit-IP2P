@@ -61,7 +61,7 @@ def get_current_File(folder_path: str = None, base_path: str = None) -> list[dic
 
 class Ip2pDatasets(ProjectionTo):
     def __init__(self, image_folder, sam_model, sd_model, pth_path, device='cuda', single_gpu=True):
-        super().__init__(self, sam_model, sd_model, pth_path, device=device)
+        super(Ip2pDatasets, self).__init__()
         self.image_folder = image_folder
         """
         e.g.:    image_folder = '..autodl-tmp/DATASETS/'
