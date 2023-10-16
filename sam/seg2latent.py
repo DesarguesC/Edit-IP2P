@@ -12,6 +12,7 @@ from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamP
 from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, Downsample
 
 from sam.data import get_masked_Image
+
 from sam.dist_util import get_bare_model as bare
 """
                        SAM
