@@ -64,9 +64,9 @@ def main():
     log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     
-    print_fq = 1
+    print_fq = 10
     save_fq = 50
-    N = 200
+    N = (int)(os.environ['NUM_EPOCH'])
     
     local_rank = 0
     device_nums = 2
@@ -90,7 +90,7 @@ def main():
         'config': './configs/ip2p-ddim.yaml',
         'sd_ckpt': './checkpoints/v1-5-pruned-emaonly.ckpt',
         'vae_ckpt': None,
-        'sam_ckpt': '../autodl-tmp/SAM/sam_vit_h_4b8939.pth',
+        'sam_ckpt': './checkpoints/sam_vit_h_4b8939.pth',
         'sam_type': 'vit_h',
         'device': device
     }
@@ -164,7 +164,9 @@ def main():
     for epoch in range(N):
         # train_dataloader.sampler.set_epoch(epoch)
         # train
+        if not single_gpu: train_dataloader.sampler.set_epoch(epoch)
         logger.info(f'Current Training Procedure: [{epoch+1}|{N}]')
+        
         for _, data in enumerate(train_dataloader):
             current_iter += 1
 
@@ -185,38 +187,59 @@ def main():
             optimizer.zero_grad()
             pm_.zero_grad()
 
-            pred = pm_(cin.to(device)) if single_gpu else pm_.module(cin.to(device))
-            kl_loss_sum = kl_div(pred, cout.to(device), reduction='sum', log_target=True)
+            pred = pm_(cin) if single_gpu else pm_.module(cin)
+            kl_loss_sum = kl_div(pred, cout, reduction='sum', log_target=True)
             kl_loss_sum.backward()
             optimizer.step()
 
-        if current_iter%print_fq == 0:
-            loss_info = '[%d|%d], KL Divergence Loss: %.6f' % (epoch+1, N, kl_loss_sum)
-            logger.info(loss_info)
+            if current_iter%print_fq == 0:
+                loss_info = '[%d|%d], KL Divergence Loss: %.6f' % (epoch+1, N, kl_loss_sum)
+                logger.info(loss_info)
 
-            # save checkpoint
-            rank, _ = get_dist_info()
-            logger.info(f'rank = {rank}')
-            if (rank == 0) and ((current_iter + 1) % save_fq == 0):
-                save_filename = f'model_pr_{current_iter + 1}.pth'
-                save_path = os.path.join(experiments_root, 'models', save_filename)
-                save_dict = {}
-                pm_bare = get_bare_model(pm_)
-                state_dict = pm_bare.state_dict()
-                for key, param in state_dict.items():
-                    if key.startswith('module.'):  # remove unnecessary 'module.'
-                        key = key[7:]
-                    save_dict[key] = param.cpu()
+                # save checkpoint
+                rank, _ = get_dist_info()
+                logger.info(f'rank = {rank}')
+        if (rank == 0) and ((epoch + 1) % save_fq == 0):
+            save_filename = f'model_epo_{epoch + 1}.pth'
+            save_path = os.path.join(experiments_root, 'models', save_filename)
+            save_dict = {}
+            pm_bare = get_bare_model(pm_)
+            state_dict = pm_bare.state_dict()
+            for key, param in state_dict.items():
+                if key.startswith('module.'):  # remove unnecessary 'module.'
+                    key = key[7:]
+                save_dict[key] = param.cpu()
 
-                logger.info(f'saving pth to path: {save_path}')
-                torch.save(save_dict, save_path)
-                # save state
+            logger.info(f'saving pth to path: {save_path}')
+            torch.save(save_dict, save_path)
+            # save state
 
-                state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
-                save_filename = f'{current_iter + 1}.state'
-                save_path = os.path.join(experiments_root, 'training_states', save_filename)
-                logger.info(f'saving state to path: {save_path}')
-                torch.save(state, save_path)
+            state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
+            save_filename = f'{current_iter + 1}.state'
+            save_path = os.path.join(experiments_root, 'training_states', save_filename)
+            logger.info(f'saving state to path: {save_path}')
+            torch.save(state, save_path)
+            
+    if (rank == 0):
+        save_filename = f'model_epo_final.pth'
+        save_path = os.path.join(experiments_root, 'models', save_filename)
+        save_dict = {}
+        pm_bare = get_bare_model(pm_)
+        state_dict = pm_bare.state_dict()
+        for key, param in state_dict.items():
+            if key.startswith('module.'):  # remove unnecessary 'module.'
+                key = key[7:]
+            save_dict[key] = param.cpu()
+
+        logger.info(f'saving pth to path: {save_path}')
+        torch.save(save_dict, save_path)
+        # save state
+
+        state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
+        save_filename = f'{current_iter + 1}.state'
+        save_path = os.path.join(experiments_root, 'training_states', save_filename)
+        logger.info(f'saving state to path: {save_path}')
+        torch.save(state, save_path)
 
     return
 
