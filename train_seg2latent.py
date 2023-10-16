@@ -56,7 +56,7 @@ def main():
     config = './configs/ip2p-ddim.yaml',
     name = 'seg'
     learning_rate = 1.0e-04
-    bsize = 6
+    bsize = (int)(os.environ['BSIZE'])
     num_workers = 25
     experiments_root = './experiments/'
     
@@ -219,27 +219,28 @@ def main():
             save_path = os.path.join(experiments_root, 'training_states', save_filename)
             logger.info(f'saving state to path: {save_path}')
             torch.save(state, save_path)
-            
-    if (rank == 0):
-        save_filename = f'model_epo_final.pth'
-        save_path = os.path.join(experiments_root, 'models', save_filename)
-        save_dict = {}
-        pm_bare = get_bare_model(pm_)
-        state_dict = pm_bare.state_dict()
-        for key, param in state_dict.items():
-            if key.startswith('module.'):  # remove unnecessary 'module.'
-                key = key[7:]
-            save_dict[key] = param.cpu()
+    rank, _ = get_dist_info()
+    logger.info(f'saving: rank = {rank}')
+    
+    save_filename = f'model_epo_final_rank({rank}).pth'
+    save_path = os.path.join(experiments_root, 'models', save_filename)
+    save_dict = {}
+    pm_bare = get_bare_model(pm_)
+    state_dict = pm_bare.state_dict()
+    for key, param in state_dict.items():
+        if key.startswith('module.'):  # remove unnecessary 'module.'
+            key = key[7:]
+        save_dict[key] = param.cpu()
 
-        logger.info(f'saving pth to path: {save_path}')
-        torch.save(save_dict, save_path)
-        # save state
+    logger.info(f'saving pth to path: {save_path}')
+    torch.save(save_dict, save_path)
+    # save state
 
-        state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
-        save_filename = f'{current_iter + 1}.state'
-        save_path = os.path.join(experiments_root, 'training_states', save_filename)
-        logger.info(f'saving state to path: {save_path}')
-        torch.save(state, save_path)
+    state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
+    save_filename = f'{current_iter + 1}.state'
+    save_path = os.path.join(experiments_root, 'training_states', save_filename)
+    logger.info(f'saving state to path: {save_path}')
+    torch.save(state, save_path)
 
     return
 
