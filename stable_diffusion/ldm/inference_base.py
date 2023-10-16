@@ -30,19 +30,23 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         help='dir to write results to',
         default='./models/ori_out/',
     )
-
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='./configs/ip2p-ddim.yaml',
+        help='train / inference configs'
+    )
     parser.add_argument(
         '--use_neg_prompt',
         type=str2bool,
         default=1,
         help='whether to use default negative prompt',
     )
-
     parser.add_argument(
         '--cond_path',
         type=str,
         default='./models/test.png',
-        help='condition image path',
+        help='condition image path / inference',
     )
 
     parser.add_argument(
@@ -70,7 +74,7 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--adapter_ckpt',
         type=str,
-        default='./models/t2iadapter_openpose_sd14v1.pth',
+        default=None,
         help='path to checkpoint of adapter',
     )
 

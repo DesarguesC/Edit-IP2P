@@ -60,7 +60,7 @@ def get_current_File(folder_path: str = None, base_path: str = None) -> list[dic
     return current_folder_FileList
 
 class Ip2pDatasets(ProjectionTo):
-    def __init__(self, image_folder, sam_model, sd_model, pth_path, device='cuda', single_gpu=True):
+    def __init__(self, image_folder, sd_model, sam_model, pm_model, device='cuda', single_gpu=True):
         super(Ip2pDatasets, self).__init__()
         self.image_folder = image_folder
         """
@@ -133,4 +133,7 @@ class Ip2pDatasets(ProjectionTo):
 
 
     def __getitem__(self, item):
+
+
+
         return self.total_data_path_list[item]

@@ -3,11 +3,14 @@ import numpy as np
 import torch, os, cv2
 from PIL import Image
 from einops import repeat, rearrange
+from torch.nn.parallel import DataParallel, DistributedDataParallel
+
 # from stable_diffusion.ldm.modules.attention import LinearAttention as la
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, Downsample
 from stable_diffusion.ldm.util_ddim import get_resize_shape
 from sam.data import get_masked_Image
+from sam.dist_util import get_bare_model as bare
 """
                        SAM
         R^3         --------->      segmentation space  (1,3,h,w)
@@ -70,18 +73,29 @@ class ProjectionModel(nn.Module):
 
 
 class ProjectionTo():
-    def __init__(self, sam_model, sd_model, pth_path, device='cuda'):
-        self.pm = ProjectionModel()
-        state_dict = torch.load(pth_path)
-        self.pm.load_state_dict(state_dict)
+    def __init__(self, sam_model, sd_model, pm_model, device='cuda'):
+        # sam: mask_generator = SamAutomaticMaskGenerator(sam_model if single_gpu else sam_model.module).generate
+
 
         self.device = device
+        self.sam_model = bare(sam_model.to(device))
+        self.pm_model = bare(pm_model.to(device))
+        self.sd_model = bare(sd_model.to(device))
 
-        # sam: mask_generator = SamAutomaticMaskGenerator(sam_model if single_gpu else sam_model.module).generate
-        self.sam = sam_model
-        self.model = sd_model
-        if torch.cuda.is_available(): self.pm = self.pm.to(self.device)
-        self.pm.eval()
+        self.pm_model.eval()
+        self.sam_model.eval()       # ???
+        self.sd_model.eval()
+
+    def Make_Parralel(self, use_single_gpu=False, local_rank=0):
+        if not use_single_gpu:
+            if not isinstance(self.pm_model, (DataParallel, DistributedDataParallel)):
+                self.pm_model = torch.nn.parallel.DistributedDataParallel(self.pm_model, \
+                                            device_ids=[local_rank], output_device=local_rank).module
+                self.sd_model = torch.nn.parallel.DistributedDataParallel(self.sd_model, \
+                                            device_ids=[local_rank], output_device=local_rank).module
+                self.sam_model = torch.nn.parallel.DistributedDataParallel(self.sam_model, \
+                                            device_ids=[local_rank], output_device=local_rank).module
+        # unused
 
     def load_img(self, Path: str = None, Train: bool = True, max_resolution: int = 512 * 512) -> np.array:
         if Path is not None:

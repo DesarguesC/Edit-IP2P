@@ -266,6 +266,26 @@ def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
 
     return model, sam, config
 
+from sam.seg2latent import ProjectionModel
+
+def load_inference_train(opt, device):
+    print('loading configs...')
+
+    config = OmegaConf.load(opt.config)
+    sam = sam_model_registry[opt.sam_type](checkpoint=opt.sam_ckpt)
+    sam.eval().to(device)
+
+    model = load_model_from_config(config, opt.sd_ckpt, None)
+    model.eval().to(device)
+    # encoder = model.encode_first_stage
+
+    pm = ProjectionModel()
+    state_dict = torch.load(opt.pm_path)
+    pm.load_state_dict(state_dict)
+    pm.eval().to(device)
+
+    return model, sam, pm, config
+
 
 def load_img(opt=None, path=None):
     
