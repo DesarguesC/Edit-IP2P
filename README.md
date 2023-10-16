@@ -8,6 +8,7 @@
 ```bash
 export RANK=0,1,2
 export CUDA_VISIBLE_DEVICES=0,1,2 # (your gpus rank)
+export NUM_EPOCH=10000
 export IMAGE_FOLDER="../autodl-tmp/..." # (your dataset path)
 ```
 
