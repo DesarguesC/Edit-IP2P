@@ -28,6 +28,26 @@ python -m torch.distributed.launch --nproc_per_node=3 --master_port=1010 train_s
 ```
 
 
+### Train out Control Net with pretrained projection model
+
+There's only need to set environment variables for multi GPU this time.
+
+```bash
+export RANK=0,1,2
+export CUDA_VISIBLE_DEVICES=0,1,2
+```
+
+Then launch python process via torch.distributed.launch
+```bash
+python -m torch.distributed.launch --nproc_per_node=3 --master_port=1010 train_seg_control.py --gpus 0,1,2 --image_folder ../autodl-tmp/DATASET \
+       --sd_ckpt ./checkpoints/v1-5-pruned-emaonly.ckpt
+```
+
+
+
+
+
+
 
 
 
