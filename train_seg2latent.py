@@ -117,7 +117,9 @@ def main():
         'sd_model': model if single_gpu else model.module,
         'sam': mask_generator,
         'batch_size': 1,
-        'downsample_factor': 8
+        'downsample_factor': 8,
+        'data_scale': 0.8,
+        'logger': logger
     }
     
     tot_params = {
@@ -156,7 +158,7 @@ def main():
     optimizer = torch.optim.AdamW(params, lr=learning_rate)
 
     current_iter = 0
-    logger.info(f'Start training from epoch: 0, iter: {current_iter}')
+    logger.info(f'\n\n\nStart training from epoch: 0, iter: {current_iter}\n')
     
     # training
     for epoch in range(N):

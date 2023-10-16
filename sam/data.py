@@ -42,7 +42,8 @@ def get_masked_Image(seg: list = None, no_color: bool = False, use_alpha=True):
 # Considering some little differences between generated and ground truth contributions
 
 class DataCreator():
-    def __init__(self, image_folder: any = None, sd_model: any = None, sam: any = None, batch_size: int = 1, downsample_factor=8, data_scale=0.4):
+    def __init__(self, image_folder: any = None, sd_model: any = None, sam: any = None, \
+                 batch_size: int = 1, downsample_factor=8, data_scale=0.4, logger = None):
         assert isinstance(image_folder, list) or isinstance(image_folder, str), 'path error when getting DataCreator initialized'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.path = image_folder if isinstance(image_folder, list) else [image_folder]
@@ -50,6 +51,7 @@ class DataCreator():
         self.sam = sam
         self.factor = downsample_factor
         self.data_scale = data_scale
+        self.logger = logger
 
         """
             Before DataCreator Declaration:
@@ -68,12 +70,21 @@ class DataCreator():
         self.latent_list = []
         self.data_dict_list = []         # [dict]
 
+    def printer(self, msg: str = None):
+        if msg != None and self.logger != None:
+            self.logger(msg)
+        return
+
     def make_data(self):
         for i in range(len(self.path)):
             folder = self.path[i]
             dir = os.listdir(folder)
             iter_ = tqdm(dir, desc=f'Adding Images in Folder to the list: [{i+1}|{len(self.path)}]', total=len(dir))
             for j, file in enumerate(iter_):
+
+                if (j+1)%100 == 0:
+                    self.printer(f'Loading Data Process: [{j+1}|{len(dir)}]')
+
                 if file.endswith('.png') or file.endswith('.jpg'):
                     xx = randint(0,5000)
                     if xx > self.data_scale * 5000:
