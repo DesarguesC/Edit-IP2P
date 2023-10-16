@@ -203,7 +203,7 @@ def main():
             save_filename = f'model_epo_{epoch + 1}.pth'
             save_path = os.path.join(experiments_root, 'models', save_filename)
             save_dict = {}
-            pm_bare = get_bare_model(pm_)
+            pm_bare, _ = get_bare_model(pm_)
             state_dict = pm_bare.state_dict()
             for key, param in state_dict.items():
                 if key.startswith('module.'):  # remove unnecessary 'module.'
@@ -225,7 +225,7 @@ def main():
     save_filename = f'model_epo_final_rank({rank}).pth'
     save_path = os.path.join(experiments_root, 'models', save_filename)
     save_dict = {}
-    pm_bare = get_bare_model(pm_)
+    pm_bare, _ = get_bare_model(pm_)
     state_dict = pm_bare.state_dict()
     for key, param in state_dict.items():
         if key.startswith('module.'):  # remove unnecessary 'module.'
