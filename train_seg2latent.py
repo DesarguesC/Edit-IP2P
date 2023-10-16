@@ -66,7 +66,7 @@ def main():
     
     print_fq = 10
     save_fq = 50
-    N = os.environ['NUM_EPOCH']
+    N = (int)(os.environ['NUM_EPOCH'])
     
     local_rank = 0
     device_nums = 2
