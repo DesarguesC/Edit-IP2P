@@ -93,7 +93,7 @@ class DataCreator():
                     image, _ = loads(opt=None, path=file)
                     seg = self.sam(np.array(image.astype(np.uint8)))
                     seg = torch.from_numpy(get_masked_Image(seg, use_alpha=False))
-                    seg = rearrange(seg, "h w c -> 1 c h w").clone().detach().requires_grad_(False).to(torch.float32)
+                    seg = rearrange(seg, "h w c -> 1 c h w").clone().detach().requires_grad_(False).to(torch.float32).to(self.device)
                     seg_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(seg))
                     seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size)
                     self.seg_list.append(seg_latent)
@@ -102,7 +102,7 @@ class DataCreator():
                     image = image[None].transpose(0, 3, 1, 2)
                     image = 2. * torch.from_numpy(image) - 1.
                     # image = torch.from_numpy(image)           # ===> Wrongly Calculated !
-                    image = repeat(image, "1 ... -> b ...", b=self.batch_size).clone().detach().requires_grad_(False).to(torch.float32)
+                    image = repeat(image, "1 ... -> b ...", b=self.batch_size).clone().detach().requires_grad_(False).to(torch.float32).to(self.device)
                     latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(image))
                     self.latent_list.append(latent)
                     

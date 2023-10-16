@@ -164,8 +164,10 @@ def main():
     for epoch in range(N):
         # train_dataloader.sampler.set_epoch(epoch)
         # train
+        if not single_gpu: train_dataloader.sampler.set_epoch(epoch)
         logger.info(f'Current Training Procedure: [{epoch+1}|{N}]')
-        for _, data in enumerate(train_dataloader):
+        
+        for _, data in enumerate(train_dataloader if single_gpu else train_sampler):
             current_iter += 1
 
             """
