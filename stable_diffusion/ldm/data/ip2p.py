@@ -4,14 +4,14 @@ from sam.seg2latent import ProjectionTo
 from jieba import re
 from tqdm import tqdm
 
-def get_current_File(folder_path: str = None, base_path: str = None) -> list:
+def get_current_File(folder_path: str = None, base_path: str = None) -> list[dict]:
 
     """
         folder_path is a folder (folder name is a bunch of number) under big folder 'clip-diltered' or 'randomly-sample'
         simultaneously, add base_path to create absolute path
 
         e.g.:       base_path = '../autodl-tmp/DATSETS/clip-filtered'
-                    folder_path = '0040048'         ->      in one 'shard' folder
+                    folder_path = '0040048'         ->      in one 'shard' folder       ->    CREATE a list[dict] for the folder
 
                     return:   {
 
@@ -55,7 +55,9 @@ def get_current_File(folder_path: str = None, base_path: str = None) -> list:
         name_dict[k]['in'] = content['input']
         name_dict[k]['out'] = content['output']
 
-    return name_dict
+    current_folder_FileList = [name_dict[n] for n in name_dict.keys()]
+
+    return current_folder_FileList
 
 class Ip2pDatasets(ProjectionTo):
     def __init__(self, image_folder, sam_model, sd_model, pth_path, device='cuda', single_gpu=True):
@@ -82,11 +84,8 @@ class Ip2pDatasets(ProjectionTo):
                                             |-- ...
         """
         self.single_gpu = single_gpu
-        self.total_data_path_dict = {}
-        self.random_sample_list = self.clip_filtered_list = []
-        self.has_length = False
+        self.total_data_path_list = []
         self.length = 0
-
 
     def make_total_path_intoDICT(self):
 
@@ -105,72 +104,33 @@ class Ip2pDatasets(ProjectionTo):
             base_path_tqdm = tqdm(base_path_list, desc=f'Path Procedure [{i}|{len(base_paths)}]: ', total=len(base_path_list))
 
             for _, shard in enumerate(base_path_tqdm):
-                # shard = '........./shard-xx'
-                if 'shard' not in shard or shard.endswith('/ipynb_checkpoints'): continue
+                # shard = 'shard-xx'
+                if 'shard' not in shard or shard.endswith('.ipynb_checkpoints'): continue
                 now_path = osp.join(base_path, shard)
-                path_list = [get_current_File(image_prompt_folder, now_path) for image_prompt_folder in os.listdir(shard) \
-                                                            if not image_prompt_folder.endswith('.ipynb_checkpoints')]
+                # shard = '........./shard-xx'
+                for image_prompt_folder in os.listdir(shard):
+                    if not image_prompt_folder.endswith('.ipynb_checkpoints'):
+                        shard_list.extend(get_current_File(image_prompt_folder, now_path))
                 # corresponds to base_path: shard-00, shard-01, ..., shard-29
-                shard_list.append(path_list)
 
-            self.total_data_path_dict[base_path] = shard_list
+            self.total_data_path_list.extend(shard_list)
 
 
 
         return
 
-    def make_lenth(self):
-        tot_length = random_sample_length = clip_filtered_length = 0
-
-        clip_filtered = self.total_data_path_dict['clip-filtered']
-        random_sample = self.total_data_path_dict['random-sample']
-        for x in clip_filtered:
-            assert isinstance(x, list), 'x'
-            for u in x:
-                assert isinstance(u, dict), 'u'
-                tot_length += len(u)
-                clip_filtered_length += len(u)
-                self.clip_shard_length_list.append(len(u))
-
-        for x in random_sample:
-            assert isinstance(x, list), 'x'
-            for u in x:
-                assert isinstance(u, dict), 'u'
-                tot_length += len(u)
-                random_sample_length += len(u)
-                self.random_shard_length_list.append(len(u))
-
-        self.length = tot_length
-        self.random_sample_length = random_sample_length
-        self.clip_filtered_length = clip_filtered_length
-        self.has_length = True
-
-
     def MakeData(self):
         self.make_total_path_intoDICT()
-        keys = self.total_data_path_dict.keys()
-        assert keys == ['clip-filtered', 'random-sample'], f'total_data_path_dict.keys() = {keys}'
-        clip_filtered = self.total_data_path_dict['clip-filtered']
-        random_sample = self.total_data_path_dict['random-sample']
-
-        assert isinstance(self.total_data_path_dict['clip-filtered'], list), f'TYPE of clip-filtered: {type(clip_filtered)}'
-        assert isinstance(self.total_data_path_dict['random-sample'], list), f'TYPE of clip-filtered: {type(random_sample)}'
-
-        assert len(self.total_data_path_dict['clip-filtered']) == 30, f'len of clip-diltered: {len(clip_filtered)}'
-        assert len(self.total_data_path_dict['random-sample']) == 30, f'len of random-sample: {len(random_sample)}'
-
-
-
+        assert self.total_data_path_list != None, 'No Data Add'
+        for u in self.total_data_path_list:
+            assert isinstance(u, dict)
         return
 
 
 
     def __len__(self):
-        if not self.has_length: return 0
-        return self.length
+        return len(self.total_data_path_list)
 
 
     def __getitem__(self, item):
-        dataset = self.total_data_path_dict['clip-filtered'] if item < self.clip_filtered_length \
-                                else self.total_data_path_dict['random-sample']
-        assert isinstance(dataset, list)
+        return self.total_data_path_list[item]
