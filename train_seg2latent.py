@@ -90,7 +90,7 @@ def main():
         'config': './configs/ip2p-ddim.yaml',
         'sd_ckpt': './checkpoints/v1-5-pruned-emaonly.ckpt',
         'vae_ckpt': None,
-        'sam_ckpt': '../autodl-tmp/SAM/sam_vit_h_4b8939.pth',
+        'sam_ckpt': './checkpoints/sam_vit_h_4b8939.pth',
         'sam_type': 'vit_h',
         'device': device
     }
@@ -185,8 +185,8 @@ def main():
             optimizer.zero_grad()
             pm_.zero_grad()
 
-            pred = pm_(cin.to(device)) if single_gpu else pm_.module(cin.to(device))
-            kl_loss_sum = kl_div(pred, cout.to(device), reduction='sum', log_target=True)
+            pred = pm_(cin) if single_gpu else pm_.module(cin)
+            kl_loss_sum = kl_div(pred, cout, reduction='sum', log_target=True)
             kl_loss_sum.backward()
             optimizer.step()
 
