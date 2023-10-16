@@ -912,7 +912,7 @@ class LatentDiffusion(DDPM):
             if len(cond) == 1:
                 key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
                 cond = {key: cond}
-                assert kwargs == None, 'has **kwargs'
+                assert kwargs == None, 'shouldn\'t have **kwargs'
             else:
                 # cond = [prompt_cond, init_latent, seg_cond]
                 # TODO: whether to give proj_cond directly ?
@@ -920,11 +920,14 @@ class LatentDiffusion(DDPM):
                 assert cond[1].shape == cond[2].shape, f'cond[1].shape = {cond[1].shape}, cond[2].shape ' \
                                                        f'= {cond[2].shape}, that leads to CAT error: '
                 # c_crossattn => prompt
-                cond = {'c_crossattn': cond[0], 'c_concat': cond[1], 'seg_cond': cond[2]}
+                cond = {'c_crossattn': cond[0], 'c_concat': cond[1]}
             
             # assert 0, f'cond.keys() = {cond.keys()}'
-            # projection_model, LatentSegAdapter  =>  in **kwargs
+            # TODO: (projection_model, LatentSegAdapter)  =>  in **kwargs
+            kwargs['seg_cond'] = cond[2]
+            assert not isinstance(x_noisy, list), f'type(x_noisy): {type(x_noisy)}'
             x_recon = self.model(x_noisy, t, **cond, **kwargs)
+            #  cond:  {c_concat: list = None, c_crossattn: list = None}
 
         if isinstance(x_recon, tuple) and not return_ids:
             return x_recon[0]
@@ -1347,8 +1350,7 @@ class DiffusionWrapper(pl.LightningModule):
                 vision token,  ???
                 ...
         """
-        if self.conditioning_key is None:
-            out = self.diffusion_model(x, t)
+        if self.conditioning_key is None: out = self.diffusion_model(x, t)
         elif self.conditioning_key == 'concat':
             xc = torch.cat([x] + c_concat, dim=1)
             out = self.diffusion_model(xc, t)
@@ -1363,42 +1365,67 @@ class DiffusionWrapper(pl.LightningModule):
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
             if isinstance(x, list) and isinstance(c_concat, list):
                 assert len(x) == len(c_concat)
-            
             xc = torch.cat([torch.cat([x[i], c_concat[i]], dim=1) for i in range(len(x))], dim=0)   # change 'cat'
             # xc = torch.cat([torch.cat(x, dim=0), torch.cat(c_concat, dim=0)], dim=1)   # origin 'cat'
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
             # multi times of origin batch size
             out = self.diffusion_model(xc, t, context=cc)
-        elif self.conditioning_key == 'cut':
+        elif self.conditioning_key == 'cat-control':
+            assert not isinstance(x, list) and isinstance(c_concat, list)
+            # c_concat: image, c_crossattn: encoded prompt
             assert self.diffusion_model.in_channels == 4
-            # modified for sd-v1.5, unet in-channel = 4 ===> CAT at dim -> [batch / w] respectively
+            assert len(x.shape) == 4 and x.shape[-1] == x.shape[2], f'invalid noise shape: x.shape = {x.shape}'
+            try:
+                seg_cond = kwargs['seg_cond']
+                pm_model = kwargs['projection']
+                adapter = kwargs['adapter']
+                assert seg_cond.shape == x.shape, f'inequal shape: seg_cond.shape = {seg_cond.shape}, x.shape = {x.shape}'
+            except Exception as err:
+                assert 0, f'{err.__str__}'
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-            assert isinstance(c_crossattn, list)
-            if isinstance(x, list) and isinstance(c_concat, list):
-                assert len(x) == len(c_concat)
-            
-            # CAT(inner): shape length -> 3;  CAT(outter): shape length -> 4.         'dim = 0' infered to different channels
-            xc = torch.cat([torch.cat([x[i],c_concat[i]], dim=2) for i in range(len(x))], dim=0)   # change 'cat'
-            # 
-            cc = torch.cat( [torch.cat([u]*2, dim=1) for u in c_crossattn]  , dim=0)
-            # print(xc.shape, t.shape, cc.shape)
-            # multi times of origin batch size
-            out = self.diffusion_model(xc, t, context=cc) 
-           
+            proj_cond = pm_model(seg_cond).to(self.device)
+            kwargs['feature_cond'] = adapter(proj_cond)
+            x = torch.cat([x] * 2, dim=2)
+            conds = torch.cat([seg_cond, c_concat], dim=2)
+            x = torch.cat([x, conds], dim=0)
+            # TODO: CAT[conds, x_noise]
+            assert x.shape[2] == 2 * seg_cond.shape[2], f'after torch.cat: x.shape = {x.shape}'
+            cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) * 2, dim=0)
+            # TODO: fit batch num
+            out = self.diffusion_models(x, t, y=cc, **kwargs)
+
+        elif self.conditioning_key == 'add-control':
+            assert not isinstance(x, list) and isinstance(c_concat, list)
+            # c_concat: image, c_crossattn: encoded prompt
+            assert self.diffusion_model.in_channels == 4
+            assert len(x.shape) == 4 and x.shape[-1] == x.shape[2], f'invalid noise shape: x.shape = {x.shape}'
+            try:
+                seg_cond = kwargs['seg_cond']
+                pm_model = kwargs['projection']
+                adapter = kwargs['adapter']
+                assert seg_cond.shape == x.shape, f'inequal shape: seg_cond.shape = {seg_cond.shape}, x.shape = {x.shape}'
+            except Exception as err:
+                assert 0, f'{err.__str__}'
+            assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
+            proj_cond = pm_model(seg_cond).to(self.device)
+            ad_feature = adapter(proj_cond)
+            assert ad_feature.shape == seg_cond
+            kwargs['feature_cond'] = ad_feature + seg_cond
+            x = torch.cat([x] * 2, dim=2)
+            conds = torch.cat([seg_cond, c_concat], dim=2)
+            x = x + conds
+            # TODO: ADD[conds, x_noise]
+            assert x.shape[2] == 2 * seg_cond.shape[2], f'after torch.cat: x.shape = {x.shape}'
+            cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]), dim=0)
+            # TODO: keep batch num
+            out = self.diffusion_models(x, t, y=cc, **kwargs)
+
+
+
         elif self.conditioning_key == 'adm':
             cc = c_crossattn[0]
             out = self.diffusion_model(x, t, y=cc)
-        elif self.conditioning_key == 'control':
-            # use sd-v1.5, unet in-channel = 4, use extra feature
-            assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-            assert isinstance(c_crossattn, list)
-            if isinstance(x, list) and isinstance(c_concat, list):
-                assert len(x) == len(c_concat)
-            #   extra_feature: dict = None
 
-            xc = torch.cat([torch.cat([x[i],c_concat[i]], dim=2) for i in range(len(x))], dim=0)
-            cc = torch.cat([torch.cat([u]*2, dim=1) for u in c_crossattn], dim=0)
-            out = self.diffusion_model(xc, t, context=cc, **kwargs)
 
         else:
             raise NotImplementedError()

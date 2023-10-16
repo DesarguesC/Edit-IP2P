@@ -1,8 +1,8 @@
 from abc import abstractmethod
 from functools import partial
-import math
+import math, sys
 from typing import Iterable
-
+sys.append('stable_diffusion')
 import numpy as np
 import torch as th
 import torch.nn as nn

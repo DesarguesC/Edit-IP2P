@@ -331,8 +331,9 @@ def main():
             optimizer.step()
 
             if current_iter % opt.print_fq == 0:
-                loss_info = '[%d|%d], KL Divergence Loss: %.6f' % (epoch + 1, N, kl_loss_sum)
+                loss_info = '[%d|%d], L2 Loss in Diffusion Steps: %.6f' % (epoch + 1, opt.epochs, l_pixel)
                 logger.info(loss_info)
+                logger.info(loss_dict)
 
                 # save checkpoint
                 rank, _ = get_dist_info()
@@ -341,8 +342,8 @@ def main():
             save_filename = f'model_epo_{epoch + 1}.pth'
             save_path = os.path.join(experiments_root, 'models', save_filename)
             save_dict = {}
-            pm_bare = get_bare_model(pm_)
-            state_dict = pm_bare.state_dict()
+            ad_bare = get_bare_model(LatentSegAdapter)
+            state_dict = ad_bare.state_dict()
             for key, param in state_dict.items():
                 if key.startswith('module.'):  # remove unnecessary 'module.'
                     key = key[7:]
@@ -362,8 +363,8 @@ def main():
         save_filename = f'model_epo_final.pth'
         save_path = os.path.join(experiments_root, 'models', save_filename)
         save_dict = {}
-        pm_bare = get_bare_model(pm_)
-        state_dict = pm_bare.state_dict()
+        ad_bare = get_bare_model(LatentSegAdapter)
+        state_dict = ad_bare.state_dict()
         for key, param in state_dict.items():
             if key.startswith('module.'):  # remove unnecessary 'module.'
                 key = key[7:]
