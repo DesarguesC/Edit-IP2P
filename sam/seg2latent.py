@@ -34,34 +34,41 @@ class ProjectionModel(nn.Module):
         # channel => dim
         super().__init__()
         # in_channels = out_channels = dim
-        self.dim = dim
+        if dim == 4:
+            self.dim = 4
+        elif dim == 8:
+            self.dim = dim
+            dim //= 2
+
+
         self.dropout = dropout
 
         self.down = Downsample(channels=dim, use_conv=use_conv)    # decline two times via pool, keep channels
         self.up = Upsample(channels=dim, use_conv=use_conv)         # expand two times via conv, keep channels
 
-        self.conv1 = nn.Conv2d(self.dim, self.dim, kernel_size=1, stride=1, padding=0)
+        self.conv1 = nn.Conv2d(dim, dim, kernel_size=1, stride=1, padding=0)
         self.conv2 = nn.Sequential(
-            nn.Conv2d(self.dim, self.dim, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
             nn.Dropout(self.dropout),
-            nn.BatchNorm2d(self.dim)
+            nn.BatchNorm2d(dim)
         )        
         self.conv3 = nn.Sequential(
-            nn.Conv2d(self.dim, 2 * self.dim, kernel_size=1, stride=1, padding=1),
+            nn.Conv2d(dim, 2 * dim, kernel_size=1, stride=1, padding=1),
             nn.Dropout(self.dropout),
-            nn.BatchNorm2d(2 * self.dim),
-            nn.Conv2d(2 * self.dim, 2 * self.dim, kernel_size=2, stride=1, padding=0),
-            nn.BatchNorm2d(2 * self.dim),
-            nn.Conv2d(2 * self.dim, self.dim, kernel_size=2, stride=1, padding=0),
-            nn.BatchNorm2d(self.dim)
+            nn.BatchNorm2d(2 * dim),
+            nn.Conv2d(2 * dim, 2 * dim, kernel_size=2, stride=1, padding=0),
+            nn.BatchNorm2d(2 * dim),
+            nn.Conv2d(2 * dim, dim, kernel_size=2, stride=1, padding=0),
+            nn.BatchNorm2d(dim)
         )
-        self.conv4 = nn.Conv2d(2 * self.dim, self.dim, kernel_size=3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(2 * dim, dim, kernel_size=3, stride=1, padding=1)
 
 
     def forward(self, x):
         # x: 64 * 64
         assert len(x.shape) == 4, f'forward input shape = {x.shape}'
-        x0 = self.up(x)                                         # x0: 4 * 128 * 128
+        x0 = self.up(x) if self.dim == 4 else self.up(torch.cat([x] * 2, dim = 1))
+                                                                # x0: 4 * 128 * 128
         y0 = self.up(x0)                                        # y0: 4 * 256 * 256
         x1 = self.conv2(x0) + x0                                # x1: 4 * 128 * 128
         y1 = self.up(x1)                                        # y1: 4 * 256 * 256
