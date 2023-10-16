@@ -1,4 +1,4 @@
-import torch, os, json
+import torch, os, json, cv2
 import os.path as osp
 from sam.seg2latent import ProjectionTo
 from jieba import re
@@ -115,8 +115,6 @@ class Ip2pDatasets(ProjectionTo):
 
             self.total_data_path_list.extend(shard_list)
 
-
-
         return
 
     def MakeData(self):
@@ -126,14 +124,18 @@ class Ip2pDatasets(ProjectionTo):
             assert isinstance(u, dict)
         return
 
-
-
     def __len__(self):
         return len(self.total_data_path_list)
 
-
     def __getitem__(self, item):
+        item = self.total_data_path_list[item]
+        cin_img_path, cout_img_path, edit_prompt = item['0'], item['1'], item['edit-prompt']
 
+        assert osp.isfile(cin_img_path) or not osp.exists(cin_img_path), f'\'0\' -> not a file or file not exists'
+        assert osp.isfile(cout_img_path) or not osp.exists(cout_img_path), f'\'1\' -> not a file or file not exists'
 
+        cin_img, cout_img = self.load_img(cin_img_path, Train=True), self.load_img(cout_img_path, Train=True)
+        seg_cond = self.MapsTo(IMG=cin_img, Type='R^3=seg')
+        proj_cond = self.MapsTo(IMG=self.MapsTo(IMG=seg_cond, Type='seg=seg-latent'), Type='seg-latent=latent')
 
-        return self.total_data_path_list[item]
+        return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt, 'seg_cond': seg_cond, 'proj_cond': proj_cond}

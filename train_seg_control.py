@@ -277,7 +277,7 @@ def main():
 
 
     # optimizer
-    params = list(LatentSegAdapter.parameters() if single_gpu else LatentSegAdapter.module.parameters())
+    params = list(LatentSegAdapter.parameters() if opt.use_single_gpu else LatentSegAdapter.module.parameters())
     optimizer = torch.optim.AdamW(params, lr=configs['training']['lr'])
 
     current_iter = 0
@@ -287,8 +287,8 @@ def main():
     for epoch in range(opt.epochs):
         # train_dataloader.sampler.set_epoch(epoch)
         # train
-        if not single_gpu: train_dataloader.sampler.set_epoch(epoch)
-        logger.info(f'Current Training Procedure: [{epoch + 1}|{N}]')
+        if not opt.use_single_gpu: train_dataloader.sampler.set_epoch(epoch)
+        logger.info(f'Current Training Procedure: [{epoch + 1}|{opt.epochs}]')
 
         for _, data in enumerate(train_dataloader):
             current_iter += 1
@@ -298,7 +298,7 @@ def main():
                 output: latent image
             """
 
-            cin, cout = data['segmentation'], data['latent-feature']
+            cin_pic, cout = data['segmentation'], data['latent-feature']
             cin = torch.tensor(cin.squeeze(), dtype=torch.float32, requires_grad=True)
             cout = torch.tensor(cout.squeeze(), dtype=torch.float32, requires_grad=True)
 
@@ -310,12 +310,12 @@ def main():
             optimizer.zero_grad()
             pm_.zero_grad()
 
-            pred = pm_(cin) if single_gpu else pm_.module(cin)
+            pred = pm_(cin) if opt.use_single_gpu else pm_.module(cin)
             kl_loss_sum = kl_div(pred, cout, reduction='sum', log_target=True)
             kl_loss_sum.backward()
             optimizer.step()
 
-            if current_iter % print_fq == 0:
+            if current_iter % opt.print_fq == 0:
                 loss_info = '[%d|%d], KL Divergence Loss: %.6f' % (epoch + 1, N, kl_loss_sum)
                 logger.info(loss_info)
 

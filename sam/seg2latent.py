@@ -1,5 +1,7 @@
 from torch import nn
+from typing import Optional, Union
 import numpy as np
+from jieba import re
 import torch, os, cv2
 from PIL import Image
 from einops import repeat, rearrange
@@ -111,31 +113,49 @@ class ProjectionTo():
             else:
                 w, h = image.size
                 h, w = get_resize_shape((h, w), max_resolution=max_resolution, resize_short_edge=None)
-
             image = cv2.resize(np.asarray(image, dtype=np.float32), (w, h), interpolation=cv2.INTER_LANCZOS4)
-
             return image
 
 
-    def MapsTo(self, Path: str = None, Type: str = None, Train: bool = True, max_resolution: int = 512*512):
-        assert Type in [None, 'R^3', 'seg', 'latent', 'latent-seg']
-        R3 = self.load_img(Path, Type, Train, max_resolution)
-        if Type == 'R^3':
-            return np.array(R3.astype(np.uint8))
-        elif Type == 'seg':
-            R3 = np.array(R3.astype(np.uint8))
-            return get_masked_Image(self.sam(R3)).to(self.device)
-        # visible mask image, np.array type, not torch.tensor
-        elif Type == 'latent':
-            image = ( np.array(R3).astype(np.float32) / 255.0 )[None].transpose(0, 3, 1, 2)
-            image = 2. * torch.from_numpy(image) - 1.
-            image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(self.device).clone().detach().requires_grad_(False).to(torch.float32)
-            return self.model.get_first_stage_encoding(self.model.encode_first_stage(image)).to(self.device)
-        elif Type == 'seg-latent':
-            R3 = np.array(R3.astype(np.uint8))
-            seg = 2. * torch.from_numpy(get_masked_Image(self.sam(R3)).to(self.device)) - 1.
-            seg = rearrange(seg, "h w c -> 1 c h w").clone().detach().requires_grad_(False).to(torch.float32)
-            seg_latent = self.model.get_first_stage_encoding(self.model.encode_first_stage(seg))
-            seg_latent = repeat(seg_latent, "1 ... -> b ...", b=self.batch_size).to(self.device)
-            return seg_latent
+    def MapsTo(self, IMG: Optional[Union[str, np.array]] = None, Type: str = None, Train: bool = True, max_resolution: int = 512*512):
+        assert Type in [None, 'R^3=seg', 'R^3=latent', 'seg=seg-latent', 'seg-latent=latent']
+        if isinstance(IMG, str):
+            R3 = self.load_img(IMG, Type, Train, max_resolution)
+        else:
+            assert isinstance(IMG, np.array), f'invalid return format in formal step'
+            R3 = IMG
+        result = []
+        Type = re.split(Type.strip(), '[=]')
+        assert len(Type) == 2, f'Fatal'
 
+        if Type[0] == 'R^3':
+            if Type[1] == 'seg':
+                R3 = np.array(R3.astype(np.uint8))
+                return get_masked_Image(self.sam(R3)).to(self.device)
+            elif Type[1] == 'latent':
+                image = (np.array(R3).astype(np.float32) / 255.)[None].transpose(0, 3, 1, 2)
+                image = 2. * torch.from_numpy(image) - 1.
+                image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(
+                    self.device).clone().detach().requires_grad_(False).to(torch.float32)
+                return self.model.get_first_stage_encoding(self.model.encode_first_stage(image))\
+                                                                                .to(self.device)
+            else: raise NotImplementedError('Unrecognized Situation-0')
+
+        elif Type[0] == 'seg':
+            if Type[1] == 'seg-latent':
+                image = (np.array(R3).astype(np.float32) / 255.)[None].transpose(0, 3, 1, 2)
+                image = 2. * torch.from_numpy(image) - 1.
+                image = repeat(image, "1 ... -> b ...", b=self.batch_size).to(
+                    self.device).clone().detach().requires_grad_(False).to(torch.float32)
+                return self.model.get_first_stage_encoding(self.model.encode_first_stage(image)) \
+                    .to(self.device)
+            else: raise NotImplementedError('Unrecognized Situation-1')
+
+        elif Type[0] == 'seg-latent':
+            if Type[1] == 'latent':
+                # return from 'seg=seg-latent'
+                assert isinstance(R3, torch.Tensor), f'???'
+                return self.pm_model(R3)
+            else: raise NotImplementedError('Unrecognized Situation-2')
+
+        else: raise NotImplementedError('Unrecognized Situation-3')
