@@ -1,7 +1,7 @@
 import torch, os
 import numpy as np
 from stable_diffusion.ldm.util_ddim import load_img as loads
-from stable_diffusion.ldm.util_ddim import get_masked_Image
+from sam.util import get_masked_Image
 from basicsr import img2tensor, tensor2img
 from einops import repeat, rearrange
 from tqdm import tqdm

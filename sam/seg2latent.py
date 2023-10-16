@@ -11,7 +11,7 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, Downsample
 
-from sam.data import get_masked_Image
+from sam.util import get_masked_Image
 
 from sam.dist_util import get_bare_model as bare
 """
@@ -99,12 +99,11 @@ class ProjectionTo():
 
 
         self.device = device
-        self.sam_model = bare(sam_model.to(device))
-        self.pm_model = bare(pm_model.to(device))
-        self.sd_model = bare(sd_model.to(device))
+        self.sam_model = bare(sam_model)
+        self.pm_model = bare(pm_model)
+        self.sd_model = bare(sd_model)
 
         self.pm_model.eval()
-        self.sam_model.eval()       # ???
         self.sd_model.eval()
 
     def Make_Parralel(self, use_single_gpu=False, local_rank=0):

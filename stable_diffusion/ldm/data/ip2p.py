@@ -4,7 +4,7 @@ from sam.seg2latent import ProjectionTo
 from jieba import re
 from tqdm import tqdm
 
-def get_current_File(folder_path: str = None, base_path: str = None) -> list[dict]:
+def get_current_File(folder_path: str = None, base_path: str = None) -> list:
 
     """
         folder_path is a folder (folder name is a bunch of number) under big folder 'clip-diltered' or 'randomly-sample'
@@ -61,7 +61,7 @@ def get_current_File(folder_path: str = None, base_path: str = None) -> list[dic
 
 class Ip2pDatasets(ProjectionTo):
     def __init__(self, image_folder, sd_model, sam_model, pm_model, device='cuda', single_gpu=True):
-        super(Ip2pDatasets, self).__init__()
+        super().__init__(sam_model=sam_model, sd_model=sd_model, pm_model=pm_model, device=device)
         self.image_folder = image_folder
         """
         e.g.:    image_folder = '..autodl-tmp/DATASETS/'
@@ -88,7 +88,7 @@ class Ip2pDatasets(ProjectionTo):
         self.length = 0
 
     @torch.no_grad()
-    def make_total_path_intoDICT(self):
+    def make_total_path_intoLIST(self):
 
         folder_list = os.listdir(self.image_folder)
         assert 'clip-filtered' in folder_list and 'random-sample' in folder_list
@@ -97,11 +97,13 @@ class Ip2pDatasets(ProjectionTo):
         # ['clip-filtered', 'random-sample']
 
         for i in range(len(base_paths)):
-            base_path = base_path[i]
+            base_path = base_paths[i]
             if base_path.endswith('.ipynb_checkpoints'): continue
             shard_list = []
-            base_path = osp.join(base_paths, base_path)
+            # base_path = osp.join(base_path, base_path)
             base_path_list = os.listdir(base_path)
+            # print(f'base_path = {base_path}')
+            
             base_path_tqdm = tqdm(base_path_list, desc=f'Path Procedure [{i}|{len(base_paths)}]: ', total=len(base_path_list))
 
             for _, shard in enumerate(base_path_tqdm):
@@ -109,7 +111,8 @@ class Ip2pDatasets(ProjectionTo):
                 if 'shard' not in shard or shard.endswith('.ipynb_checkpoints'): continue
                 now_path = osp.join(base_path, shard)
                 # shard = '........./shard-xx'
-                for image_prompt_folder in os.listdir(shard):
+                # print(f'now_path = {now_path}')
+                for image_prompt_folder in os.listdir(now_path):
                     if not image_prompt_folder.endswith('.ipynb_checkpoints'):
                         shard_list.extend(get_current_File(image_prompt_folder, now_path))
                 # corresponds to base_path: shard-00, shard-01, ..., shard-29

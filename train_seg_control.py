@@ -69,11 +69,6 @@ def parsr_args():
         help="use plms sampling",
     )
     parser.add_argument(
-        "--auto_resume",
-        action='store_true',
-        help="use plms sampling",
-    )
-    parser.add_argument(
         "--sd_ckpt",
         type=str,
         default="./checkpoints/v1-5-pruned.ckpt",
@@ -225,17 +220,15 @@ def main():
         sd_model = torch.nn.parallel.DistributedDataParallel(
             sd_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
-    if not opt.use_single_gpu:
         sam_model = torch.nn.parallel.DistributedDataParallel(
             sam_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
-    if not opt.use_single_gpu:
         pm_model = torch.nn.parallel.DistributedDataParallel(
             pm_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
 
     print(type(sd_model))
-    print(type(sd_model.module))
+    print(type(sd_model.module) if not opt.use_single_gpu else 'pass module')
 
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
     data_params = {
