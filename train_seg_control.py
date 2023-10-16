@@ -11,7 +11,7 @@ sys.path.append('./stable_diffusion')
 
 from stable_diffusion.ldm.util_ddim import load_inference_train
 from stable_diffusion.ldm.inference_base import str2bool
-
+from stable_diffusion.eldm.adapter import Adapter
 from basicsr.utils import (get_root_logger, get_time_str,
                            scandir, tensor2img)
 import logging
@@ -192,22 +192,20 @@ def parsr_args():
         default=False,
         help='node rank for distributed training'
     )
+
     opt = parser.parse_args()
     return opt
 
 
 def main():
     opt = parsr_args()
-    device = 'cuda'
-    sd_model, sam_model, pm_model, configs = load_inference_train(opt, device)
+    opt.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
 
     experiments_root = './exp-segControlNet/'
     experiments_root = mkdir(experiments_root)
     log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-
-
-
 
     if not opt.use_single_gpu:
         # lauch multi-GPU training process
@@ -227,7 +225,6 @@ def main():
         sd_model = torch.nn.parallel.DistributedDataParallel(
             sd_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
-
     if not opt.use_single_gpu:
         sam_model = torch.nn.parallel.DistributedDataParallel(
             sam_model,
@@ -236,13 +233,17 @@ def main():
         pm_model = torch.nn.parallel.DistributedDataParallel(
             pm_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
+
+    print(type(sd_model))
+    print(type(sd_model.module))
+
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
     data_params = {
         'image_folder': opt.image_folder,
         'sd_model': sd_model,
         'sam_model': mask_generator,
         'pm_model': pm_model,
-        'device': device,
+        'device': opt.device,
         'single_gpu': opt.use_single_gpu
     }
 
@@ -266,22 +267,24 @@ def main():
         sampler=train_sampler)
 
 
-    LatentSegAdapter = ()           # Adapter / Control Net
-
-    HERE
-
+    LatentSegAdapter = Adapter(cin=3 * 64, channels=[320, 640, 1280, 1280][:4], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
+    # Adapter / Control Net
     if not opt.use_single_gpu:
         LatentSegAdapter = torch.nn.parallel.DistributedDataParallel(
             LatentSegAdapter,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
 
-
     # optimizer
-    params = list(LatentSegAdapter.parameters() if opt.use_single_gpu else LatentSegAdapter.module.parameters())
+    params = list(LatentSegAdapter.parameters())
     optimizer = torch.optim.AdamW(params, lr=configs['training']['lr'])
 
     current_iter = 0
     logger.info(f'\n\n\nStart training from epoch: 0, iter: {current_iter}\n')
+
+    Models = {
+        'projection': pm_model.module,
+        'adapter': LatentSegAdapter.module
+    }
 
     # training
     for epoch in range(opt.epochs):
@@ -294,25 +297,37 @@ def main():
             current_iter += 1
 
             """
-                input: segmentation
-                output: latent image
+                data = {
+                    'cin': cin_img, 
+                    'cout': cout_img, 
+                    'edit': edit_prompt, 
+                    'seg_cond': seg_cond
+                }
             """
 
-            cin_pic, cout = data['segmentation'], data['latent-feature']
-            cin = torch.tensor(cin.squeeze(), dtype=torch.float32, requires_grad=True)
-            cout = torch.tensor(cout.squeeze(), dtype=torch.float32, requires_grad=True)
+            cin_pic, cout_pic = data['cin_img'], data['cout_img']
+            seg_cond, edit_prompt = data['seg_cond'], data['edit']
 
-            if np.any(np.isnan(cin.detach().numpy())) or np.any(np.isnan(cout.detach().numpy())):
-                continue
+            with torch.no_grad():
+                c = sd_model.module.get_learned_conditioning(edit_prompt)
+                z_0 = sd_model.module.get_first_stage_encoding(\
+                    sd_model.module.encode_first_stage((2. * cin_pic - 1.).to(opt.device)))
+                z_T = sd_model.module.get_first_stage_encoding(\
+                    sd_model.module.encode_first_stage((2. * cout_pic - 1.).to(opt.device)))
 
-            assert cin.shape == cout.shape, f'cin.shape = {cin.shape}, cout.shape = {cout.shape}'
+
+            # assert cin.shape == cout.shape, f'cin.shape = {cin.shape}, cout.shape = {cout.shape}'
 
             optimizer.zero_grad()
-            pm_.zero_grad()
+            LatentSegAdapter.zero_grad()
 
-            pred = pm_(cin) if opt.use_single_gpu else pm_.module(cin)
-            kl_loss_sum = kl_div(pred, cout, reduction='sum', log_target=True)
-            kl_loss_sum.backward()
+            # cin_feature = LatentSegAdapter(proj_cond) if opt.use_single_gpu else LatentSegAdapter.module(proj_cond)
+
+            l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond], **Models)
+            l_pixel.backward()
+            optimizer.step()
+
+
             optimizer.step()
 
             if current_iter % opt.print_fq == 0:

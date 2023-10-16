@@ -75,6 +75,7 @@ class DataCreator():
             self.logger(msg)
         return
 
+    @torch.no_grad()
     def make_data(self):
         for i in range(len(self.path)):
             folder = self.path[i]
@@ -110,6 +111,7 @@ class DataCreator():
                     continue
         return
 
+    @torch.no_grad()
     def MakeData(self):
         self.make_data()
         assert len(self.seg_list) == len(self.latent_list), 'error occurred when making data -> make'

@@ -87,6 +87,7 @@ class Ip2pDatasets(ProjectionTo):
         self.total_data_path_list = []
         self.length = 0
 
+    @torch.no_grad()
     def make_total_path_intoDICT(self):
 
         folder_list = os.listdir(self.image_folder)
@@ -127,6 +128,7 @@ class Ip2pDatasets(ProjectionTo):
     def __len__(self):
         return len(self.total_data_path_list)
 
+    @torch.no_grad()
     def __getitem__(self, item):
         item = self.total_data_path_list[item]
         cin_img_path, cout_img_path, edit_prompt = item['0'], item['1'], item['edit-prompt']
@@ -134,8 +136,7 @@ class Ip2pDatasets(ProjectionTo):
         assert osp.isfile(cin_img_path) or not osp.exists(cin_img_path), f'\'0\' -> not a file or file not exists'
         assert osp.isfile(cout_img_path) or not osp.exists(cout_img_path), f'\'1\' -> not a file or file not exists'
 
-        cin_img, cout_img = self.load_img(cin_img_path, Train=True), self.load_img(cout_img_path, Train=True)
+        cin_img, cout_img = self.load_img(cin_img_path, Train=True).to(self.device), self.load_img(cout_img_path, Train=True).to(self.device)
         seg_cond = self.MapsTo(IMG=cin_img, Type='R^3=seg')
-        proj_cond = self.MapsTo(IMG=self.MapsTo(IMG=seg_cond, Type='seg=seg-latent'), Type='seg-latent=latent')
 
-        return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt, 'seg_cond': seg_cond, 'proj_cond': proj_cond}
+        return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt, 'seg_cond': seg_cond}

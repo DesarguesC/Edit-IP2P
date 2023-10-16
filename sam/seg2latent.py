@@ -99,6 +99,7 @@ class ProjectionTo():
                                             device_ids=[local_rank], output_device=local_rank).module
         # unused
 
+    @torch.no_grad()
     def load_img(self, Path: str = None, Train: bool = True, max_resolution: int = 512 * 512) -> np.array:
         if Path is not None:
             assert os.path.isfile(Path)
@@ -116,7 +117,7 @@ class ProjectionTo():
             image = cv2.resize(np.asarray(image, dtype=np.float32), (w, h), interpolation=cv2.INTER_LANCZOS4)
             return image
 
-
+    @torch.no_grad()
     def MapsTo(self, IMG: Optional[Union[str, np.array]] = None, Type: str = None, Train: bool = True, max_resolution: int = 512*512):
         assert Type in [None, 'R^3=seg', 'R^3=latent', 'seg=seg-latent', 'seg-latent=latent']
         if isinstance(IMG, str):
@@ -132,6 +133,7 @@ class ProjectionTo():
             if Type[1] == 'seg':
                 R3 = np.array(R3.astype(np.uint8))
                 return get_masked_Image(self.sam(R3)).to(self.device)
+            # to np.array
             elif Type[1] == 'latent':
                 image = (np.array(R3).astype(np.float32) / 255.)[None].transpose(0, 3, 1, 2)
                 image = 2. * torch.from_numpy(image) - 1.
@@ -139,9 +141,11 @@ class ProjectionTo():
                     self.device).clone().detach().requires_grad_(False).to(torch.float32)
                 return self.model.get_first_stage_encoding(self.model.encode_first_stage(image))\
                                                                                 .to(self.device)
+            # to torch.Tensor
             else: raise NotImplementedError('Unrecognized Situation-0')
 
         elif Type[0] == 'seg':
+            # input: np.array
             if Type[1] == 'seg-latent':
                 image = (np.array(R3).astype(np.float32) / 255.)[None].transpose(0, 3, 1, 2)
                 image = 2. * torch.from_numpy(image) - 1.
@@ -149,13 +153,16 @@ class ProjectionTo():
                     self.device).clone().detach().requires_grad_(False).to(torch.float32)
                 return self.model.get_first_stage_encoding(self.model.encode_first_stage(image)) \
                     .to(self.device)
+            # to torch.Tensor
             else: raise NotImplementedError('Unrecognized Situation-1')
 
         elif Type[0] == 'seg-latent':
+            # input: torch.Tensor
             if Type[1] == 'latent':
                 # return from 'seg=seg-latent'
                 assert isinstance(R3, torch.Tensor), f'???'
                 return self.pm_model(R3)
+            # to torch.Tensor
             else: raise NotImplementedError('Unrecognized Situation-2')
 
         else: raise NotImplementedError('Unrecognized Situation-3')
