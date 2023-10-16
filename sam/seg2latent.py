@@ -10,7 +10,7 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 # from stable_diffusion.ldm.modules.attention import LinearAttention as la
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from stable_diffusion.ldm.modules.diffusionmodules.openaimodel import Upsample, Downsample
-from stable_diffusion.ldm.util_ddim import get_resize_shape
+
 from sam.data import get_masked_Image
 from sam.dist_util import get_bare_model as bare
 """
@@ -24,6 +24,17 @@ from sam.dist_util import get_bare_model as bare
 
 """
 
+def get_resize_shape(image_shape, max_resolution=512 * 512, resize_short_edge=None) -> tuple:
+    # print('resize: ', image_shape)
+    h, w = image_shape[:2]
+    if resize_short_edge is not None:
+        k = resize_short_edge / min(h, w)
+    else:
+        k = max_resolution / (h * w)
+        k = k**0.5
+    h = ((h * k) // 64) * 64
+    w = ((w * k) // 64) * 64
+    return (int)(h), (int)(w)
 
 
 class ProjectionModel(nn.Module):

@@ -7,7 +7,7 @@ import numpy as np
 
 import os
 from safetensors.torch import load_file
-
+from sam.seg2latent import ProjectionModel
 from inspect import isfunction
 from PIL import Image, ImageDraw, ImageFont
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
@@ -266,7 +266,7 @@ def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
 
     return model, sam, config
 
-from sam.seg2latent import ProjectionModel
+
 
 def load_inference_train(opt, device):
     print('loading configs...')
