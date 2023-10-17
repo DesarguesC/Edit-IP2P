@@ -31,32 +31,38 @@ def get_current_File(folder_path: str = None, base_path: str = None) -> list:
 
     assert folder_path != None, 'no input path'
     name_dict = {}
-    for file in os.listdir(folder_path):
+    absolute_folder_path = osp.join(base_path, folder_path)
+    
+    for file in os.listdir(absolute_folder_path):
         # e.g.: file = '09960897_0.jpg' -> ['09960897', '0', 'jpg']
         if file.endswith('.jpg') or file.endswith('.png'):
-            name = re.split(file.strip(), '[_\.]')
-            assert len(name) == 3, f'unusual file name'
+            # print(f'file: {file}')
+            name = re.split('[_\.]', file.strip())
+            # print(f'name: {name}')
+            assert len(name) == 3, f'unusual file name; name = {name}'
             if name[0] not in name_dict.keys():
                 name_dict[name[0]] = {}
             assert name[1] in ['0', '1'], 'unrecognized image suffix'
 
-            absolute_path = osp.join(base_path, folder_path, file)
-            assert osp.isfile(absolute_path)
-            name_dict[name[0]][name[1]] = absolute_path
+            absolute_file_path = osp.join(absolute_folder_path, file)
+            assert osp.isfile(absolute_file_path)
+            name_dict[name[0]][name[1]] = absolute_file_path
         else:
             continue
-
+            
     file = 'prompt.json'
     absolute_path = osp.join(base_path, folder_path, file)
-    assert osp.isfile(absolute_path)
-    content = json.load(osp.join(base_path, folder_path, file))
+    assert osp.isfile(absolute_file_path)
+    
+    with open(absolute_path, 'r', encoding='ISO-8859-1') as f:
+        content = json.load(f)
+        
     for k, _ in name_dict.items():
         name_dict[k]['edit-prompt'] = content['edit']
         name_dict[k]['in'] = content['input']
         name_dict[k]['out'] = content['output']
-
     current_folder_FileList = [name_dict[n] for n in name_dict.keys()]
-
+    
     return current_folder_FileList
 
 class Ip2pDatasets(ProjectionTo):
@@ -115,7 +121,10 @@ class Ip2pDatasets(ProjectionTo):
                 for image_prompt_folder in os.listdir(now_path):
                     if not image_prompt_folder.endswith('.ipynb_checkpoints'):
                         shard_list.extend(get_current_File(image_prompt_folder, now_path))
-                # corresponds to base_path: shard-00, shard-01, ..., shard-29
+                        # corresponds to base_path: shard-00, shard-01, ..., shard-29
+                        
+                        # except Exception as err:
+                        #     print(err)
 
             self.total_data_path_list.extend(shard_list)
 

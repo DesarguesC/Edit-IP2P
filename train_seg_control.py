@@ -275,8 +275,8 @@ def main():
     logger.info(f'\n\n\nStart training from epoch: 0, iter: {current_iter}\n')
 
     Models = {
-        'projection': pm_model.module,
-        'adapter': LatentSegAdapter.module
+        'projection': pm_model if opt.use_single_gpu else pm_model.module,
+        'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
     }
 
     # training
