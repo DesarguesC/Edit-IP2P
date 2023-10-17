@@ -44,7 +44,12 @@ python -m torch.distributed.launch --nproc_per_node=3 --master_port=1010 train_s
 ```
 
 
-
+multi-GPU deadlock:
+```bash
+NCCL_DEBUG=TRACE
+TORCH_DISTRIBUTED_DEBUG=DETAIL
+NCCL_P2P_LEVEL=NVL
+```
 
 
 
