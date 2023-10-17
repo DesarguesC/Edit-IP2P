@@ -883,9 +883,6 @@ class LatentDiffusion(DDPM):
     def forward(self, x, c, *args, **kwargs):
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
         
-        if isinstance(c, list):
-            print(f'list c length: {len(c)}')   # len(c) = 4
-        
         if self.model.conditioning_key is not None:
             assert c is not None
             if self.cond_stage_trainable:
@@ -1405,13 +1402,11 @@ class DiffusionWrapper(pl.LightningModule):
 
             proj_cond = pm_model(seg_cond_latent).to(self.device)
             assert len(c_crossattn) == 1, f'len c_crossattn = {len(c_crossattn)}'
-            print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}, c_concat[0].shape = {c_concat[0].shape}')
+            # print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}, c_concat[0].shape = {c_concat[0].shape}')
+            
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
             feature_list = adapter(ad_input)
-            
-            cc = c_crossattn + c_concat
-            # TODO: keep batch num
-            out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
+            out = self.diffusion_model(x, t, context=c_crossattn[0], latent_unet_feature=feature_list)   # U-Net
         
         elif self.conditioning_key == 'cat-control':
             assert not isinstance(x, list) and isinstance(c_concat, list) and isinstance(c_crossattn, list), \
@@ -1424,7 +1419,7 @@ class DiffusionWrapper(pl.LightningModule):
                 seg_cond_latent = kwargs['seg_cond_latent']
                 pm_model = kwargs['projection']
                 adapter = kwargs['adapter']
-                assert seg_cond_latent.shape == x.shape, f'inequal shape: seg_cond.shape = {seg_cond.shape}, x.shape = {x.shape}'
+                assert seg_cond_latent.shape == x.shape, f'inequal shape: seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
             except Exception as err:
                 assert 0, f'{err.__str__}'
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'

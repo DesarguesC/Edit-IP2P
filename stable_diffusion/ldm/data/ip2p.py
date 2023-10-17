@@ -104,9 +104,8 @@ class Ip2pDatasets(ProjectionTo):
 
         for i in range(len(base_paths)):
             base_path = base_paths[i]
-            if base_path.endswith('.ipynb_checkpoints'): continue
+            if base_path.endswith('.ipynb_checkpoints') or osp.isfile(base_path): continue
             shard_list = []
-            # base_path = osp.join(base_path, base_path)
             base_path_list = os.listdir(base_path)
             # print(f'base_path = {base_path}')
             

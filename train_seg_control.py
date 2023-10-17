@@ -201,45 +201,44 @@ def main():
     experiments_root = mkdir(experiments_root)
     log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-
+    print(0)
     if not opt.use_single_gpu:
         # lauch multi-GPU training process
         import torch.multiprocessing as mp
         import torch.distributed as dist
-        if mp.get_start_method(allow_none=True) is None:
-            mp.set_start_method('spawn')
+        # if mp.get_start_method(allow_none=True) is None:
+            # mp.set_start_method('spawn')
         rank = int(os.environ['RANK'])
         num_gpus = torch.cuda.device_count()
         torch.cuda.set_device(rank % num_gpus)
-        dist.init_process_group(backend='nccl')
+        dist.init_process_group(backend='nccl', rank=rank)
         dist.barrier()
         torch.backends.cudnn.benchmark = True
-
-    if sd_model.model.conditioning_key == 'add-control': opt.H = 512
-    elif sd_model.model.conditioning_key == 'cat-control': opt.H = 1024
-    else: pass
-    
-    try:
-        print(type(sd_model.diffusion_model))
-    except Exception as err:
-        print(err)
-        pass
-
-    if not opt.use_single_gpu:
+        
+        print(f'sd-{opt.local_rank}')
         sd_model = torch.nn.parallel.DistributedDataParallel(
             sd_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
+        print('sam')
         sam_model = torch.nn.parallel.DistributedDataParallel(
             sam_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
+        print('pm')
         pm_model = torch.nn.parallel.DistributedDataParallel(
             pm_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
 
+    # if sd_model.model.conditioning_key == 'add-control': opt.H = 512
+    # elif sd_model.model.conditioning_key == 'cat-control': opt.H = 1024
+    # else: pass
+    print(1)
+    # if not opt.use_single_gpu:
+        
+
     print(type(sd_model))
     print(type(sd_model.module) if not opt.use_single_gpu else 'pass module')
     
-        
+    print(2)
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
     data_params = {
         'image_folder': opt.image_folder,
@@ -249,7 +248,7 @@ def main():
         'device': opt.device,
         'single_gpu': opt.use_single_gpu
     }
-
+    print(3)
     data_creator = Ip2pDatasets(**data_params)
 
     with torch.no_grad():
@@ -257,7 +256,8 @@ def main():
     print(f'Randomly loading data with length: {len(data_creator)}')
 
     train_sampler = None if opt.use_single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
-    LatentSegAdapter = Adapter(cin=8*64, channels=[640, 320, 320, 640], nums_rb=3, ksize=1, sk=True, use_conv=False).to(opt.device)
+    # LatentSegAdapter = Adapter(cin=8*64, channels=[640, 320, 320, 640], nums_rb=3, ksize=1, sk=True, use_conv=False).to(opt.device)
+    LatentSegAdapter = Adapter(cin=8*64, channels=[160, 320, 320, 640], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
     # Adapter / Control Net
     
     if not opt.use_single_gpu:
@@ -350,8 +350,6 @@ def main():
             l_pixel.backward()
             optimizer.step()
 
-
-            optimizer.step()
 
             if current_iter % opt.print_fq == 0:
                 loss_info = '[%d|%d], L2 Loss in Diffusion Steps: %.6f' % (epoch + 1, opt.epochs, l_pixel)
