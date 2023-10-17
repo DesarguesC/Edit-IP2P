@@ -125,7 +125,7 @@ def parsr_args():
     parser.add_argument(
         "--H",
         type=int,
-        default=512,
+        default=512 * 2,            # use cat-control, cat at channels: 2 * 512
         help="image height, in pixel space",
     )
     parser.add_argument(
@@ -215,6 +215,11 @@ def main():
         dist.barrier()
         torch.backends.cudnn.benchmark = True
 
+    if sd_model.model.conditioning_key == 'add-control': opt.H = 512
+    elif sd_model.model.conditioning_key == 'cat-control': opt.H = 1024
+    else: pass
+
+    print(type(sd_model.diffusion_models))
 
     if not opt.use_single_gpu:
         sd_model = torch.nn.parallel.DistributedDataParallel(
@@ -305,7 +310,7 @@ def main():
             # print('get cin/cout in current-iter %d cost: %.6f(s)'%(current_iter, time.time() - start_time))
             
             # start_time = time.time()
-            seg_cond, edit_prompt = data['seg_cond'], data['edit']
+            seg_cond_latent, seg_cond, edit_prompt = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # print('get seg_cond/edit_prompt in current-iter %d cost: %.6f(s)'%(current_iter, time.time() - start_time))
             
             # low time cost tested
@@ -336,7 +341,7 @@ def main():
             # *args: (c, z_0, seg_cond)
             # **kwargs: Models
             
-            l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond], **Models)
+            l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond, seg_cond_latent], **Models)
             l_pixel.backward()
             optimizer.step()
 
