@@ -1377,6 +1377,34 @@ class DiffusionWrapper(pl.LightningModule):
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
             # multi times of origin batch size
             out = self.diffusion_model(xc, t, context=cc)
+        
+        elif self.conditioning_key == 'add-control':
+            # assert not isinstance(x, list) and isinstance(c_concat, list), f'type(x) = {type(x)}, type(c_concat) = {type(c_concat)}, type(c_crosattn) = {type(c_crossattn)}'
+            # c_concat: image, c_crossattn: encoded prompt
+
+            assert self.diffusion_model.in_channels == 4
+            assert len(x.shape) == 4 and x.shape[-1] == x.shape[2], f'invalid noise shape: x.shape = {x.shape}'
+            try:
+                seg_cond = kwargs['seg_cond']
+                pm_model = kwargs['projection']
+                adapter = kwargs['adapter']
+                assert seg_cond.shape == x.shape, f'inequal shape: seg_cond.shape = {seg_cond.shape}, x.shape = {x.shape}'
+            except Exception as err:
+                assert 0, f'{err.__str__}'
+            assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
+            proj_cond = pm_model(seg_cond).to(self.device)
+            ad_feature = adapter(proj_cond)
+            assert ad_feature.shape == seg_cond
+            kwargs['feature_cond'] = ad_feature + seg_cond
+            x = torch.cat([x] * 2, dim=2)
+            conds = torch.cat([seg_cond, c_concat], dim=2)
+            x = x + conds
+            # TODO: ADD[conds, x_noise]
+            assert x.shape[2] == 2 * seg_cond.shape[2], f'after torch.cat: x.shape = {x.shape}'
+            cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]), dim=0)
+            # TODO: keep batch num
+            out = self.diffusion_models(x, t, y=cc, **kwargs)
+        
         elif self.conditioning_key == 'cat-control':
             assert not isinstance(x, list) and isinstance(c_concat, list)
             # c_concat: image, c_crossattn: encoded prompt
@@ -1401,31 +1429,7 @@ class DiffusionWrapper(pl.LightningModule):
             # TODO: fit batch num
             out = self.diffusion_models(x, t, y=cc, **kwargs)
 
-        elif self.conditioning_key == 'add-control':
-            assert not isinstance(x, list) and isinstance(c_concat, list)
-            # c_concat: image, c_crossattn: encoded prompt
-            assert self.diffusion_model.in_channels == 4
-            assert len(x.shape) == 4 and x.shape[-1] == x.shape[2], f'invalid noise shape: x.shape = {x.shape}'
-            try:
-                seg_cond = kwargs['seg_cond']
-                pm_model = kwargs['projection']
-                adapter = kwargs['adapter']
-                assert seg_cond.shape == x.shape, f'inequal shape: seg_cond.shape = {seg_cond.shape}, x.shape = {x.shape}'
-            except Exception as err:
-                assert 0, f'{err.__str__}'
-            assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-            proj_cond = pm_model(seg_cond).to(self.device)
-            ad_feature = adapter(proj_cond)
-            assert ad_feature.shape == seg_cond
-            kwargs['feature_cond'] = ad_feature + seg_cond
-            x = torch.cat([x] * 2, dim=2)
-            conds = torch.cat([seg_cond, c_concat], dim=2)
-            x = x + conds
-            # TODO: ADD[conds, x_noise]
-            assert x.shape[2] == 2 * seg_cond.shape[2], f'after torch.cat: x.shape = {x.shape}'
-            cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]), dim=0)
-            # TODO: keep batch num
-            out = self.diffusion_models(x, t, y=cc, **kwargs)
+        
 
 
 
