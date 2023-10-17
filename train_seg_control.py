@@ -257,7 +257,7 @@ def main():
 
     train_sampler = None if opt.use_single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
     # LatentSegAdapter = Adapter(cin=8*64, channels=[640, 320, 320, 640], nums_rb=3, ksize=1, sk=True, use_conv=False).to(opt.device)
-    LatentSegAdapter = Adapter(cin=8*64, channels=[160, 320, 320, 640], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
+    LatentSegAdapter = Adapter(cin=8*64, channels=[80, 320, 640, 80], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
     # Adapter / Control Net
     
     if not opt.use_single_gpu:
