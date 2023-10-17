@@ -882,6 +882,10 @@ class LatentDiffusion(DDPM):
 
     def forward(self, x, c, *args, **kwargs):
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
+        
+        if isinstance(c, list):
+            print(f'list c length: {len(c)}')
+        
         if self.model.conditioning_key is not None:
             assert c is not None
             if self.cond_stage_trainable:
@@ -917,14 +921,15 @@ class LatentDiffusion(DDPM):
                 # cond = [prompt_cond, init_latent, seg_cond]
                 # TODO: whether to give proj_cond directly ?
                 assert len(cond) == 3, f'cond wrong with length = {len(cond)}'
-                assert cond[1].shape == cond[2].shape, f'cond[1].shape = {cond[1].shape}, cond[2].shape ' \
+                assert cond[1].shape == cond[2].shape, f'init_latent shape = {cond[1].shape}, seg_cond(latent) shape ' \
                                                        f'= {cond[2].shape}, that leads to CAT error: '
                 # c_crossattn => prompt
-                cond = {'c_crossattn': cond[0], 'c_concat': cond[1]}
+                cond_dict = {'c_crossattn': cond[0], 'c_concat': cond[1]}
             
             # assert 0, f'cond.keys() = {cond.keys()}'
             # TODO: (projection_model, LatentSegAdapter)  =>  in **kwargs
             kwargs['seg_cond'] = cond[2]
+            cond = cond_dict
             assert not isinstance(x_noisy, list), f'type(x_noisy): {type(x_noisy)}'
             x_recon = self.model(x_noisy, t, **cond, **kwargs)
             #  cond:  {c_concat: list = None, c_crossattn: list = None}
@@ -952,10 +957,12 @@ class LatentDiffusion(DDPM):
         kl_prior = normal_kl(mean1=qt_mean, logvar1=qt_log_variance, mean2=0.0, logvar2=0.0)
         return mean_flat(kl_prior) / np.log(2.0)
 
-    def p_losses(self, x_start, cond, t, noise=None):
+    def p_losses(self, x_start, cond, t, noise=None, **kwargs):
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
-        model_output = self.apply_model(x_noisy, t, cond)
+        if self.model.conditioning_key.endswith('control'):
+            assert isinstance(cond, list), f'type(cond) = {type(cond)}, calue: \n{cond}\n'
+        model_output = self.apply_model(x_noisy, t, cond, **kwargs)
 
         loss_dict = {}
         prefix = 'train' if self.training else 'val'

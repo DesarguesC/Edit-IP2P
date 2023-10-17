@@ -247,7 +247,29 @@ def main():
     print(f'Randomly loading data with length: {len(data_creator)}')
 
     train_sampler = None if opt.use_single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
+    LatentSegAdapter = Adapter(cin=3 * 64, channels=[320, 640, 1280, 1280][:4], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
+    # Adapter / Control Net
+    
+    if not opt.use_single_gpu:
+        LatentSegAdapter = torch.nn.parallel.DistributedDataParallel(
+            LatentSegAdapter,
+            device_ids=[opt.local_rank], output_device=opt.local_rank)
+    Models = {
+        'projection': pm_model if opt.use_single_gpu else pm_model.module,
+        'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
+    }
 
+
+    # optimizer
+    params = list(LatentSegAdapter.parameters())
+    optimizer = torch.optim.AdamW(params, lr=configs['training']['lr'])
+
+    
+    current_iter = 0
+    logger.info(f'\n\n\nStart training from epoch: 0, iter: {current_iter}\n')
+    
+    import time
+    start_time = time.time()
     train_dataloader = tqdm(DataLoader(dataset=data_creator, batch_size=opt.bsize, shuffle=True, drop_last=True), \
                             desc='Procedure', total=len(data_creator)) \
         if opt.use_single_gpu else torch.utils.data.DataLoader(
@@ -258,27 +280,8 @@ def main():
         pin_memory=True,
         drop_last=True,
         sampler=train_sampler)
-
-
-    LatentSegAdapter = Adapter(cin=3 * 64, channels=[320, 640, 1280, 1280][:4], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
-    # Adapter / Control Net
-    if not opt.use_single_gpu:
-        LatentSegAdapter = torch.nn.parallel.DistributedDataParallel(
-            LatentSegAdapter,
-            device_ids=[opt.local_rank], output_device=opt.local_rank)
-
-    # optimizer
-    params = list(LatentSegAdapter.parameters())
-    optimizer = torch.optim.AdamW(params, lr=configs['training']['lr'])
-
-    current_iter = 0
-    logger.info(f'\n\n\nStart training from epoch: 0, iter: {current_iter}\n')
-
-    Models = {
-        'projection': pm_model if opt.use_single_gpu else pm_model.module,
-        'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
-    }
-
+    print('sampler init time cost: %.6f'%(time.time() - start_time))
+    
     # training
     for epoch in range(opt.epochs):
         # train_dataloader.sampler.set_epoch(epoch)
@@ -297,25 +300,42 @@ def main():
                     'seg_cond': seg_cond
                 }
             """
-
-            cin_pic, cout_pic = data['cin_img'], data['cout_img']
+            # start_time = time.time()
+            cin_pic, cout_pic = data['cin'], data['cout']
+            # print('get cin/cout in current-iter %d cost: %.6f(s)'%(current_iter, time.time() - start_time))
+            
+            # start_time = time.time()
             seg_cond, edit_prompt = data['seg_cond'], data['edit']
-
+            # print('get seg_cond/edit_prompt in current-iter %d cost: %.6f(s)'%(current_iter, time.time() - start_time))
+            
+            # low time cost tested
+            
             with torch.no_grad():
-                c = sd_model.module.get_learned_conditioning(edit_prompt)
-                z_0 = sd_model.module.get_first_stage_encoding(\
-                    sd_model.module.encode_first_stage((2. * cin_pic - 1.).to(opt.device)))
-                z_T = sd_model.module.get_first_stage_encoding(\
-                    sd_model.module.encode_first_stage((2. * cout_pic - 1.).to(opt.device)))
+                c = sd_model.module.get_learned_conditioning(edit_prompt) \
+                        if not opt.use_single_gpu else sd_model.get_learned_conditioning(edit_prompt)
+                z_0 = cin_pic.to(opt.device)
+                z_T = cout_pic.to(opt.device)
+                
+                # already cast to latent space
+                # sd_model.module.get_first_stage_encoding(\
+                #     sd_model.module.encode_first_stage((2. * cout_pic - 1.).to(opt.device)))
 
 
-            # assert cin.shape == cout.shape, f'cin.shape = {cin.shape}, cout.shape = {cout.shape}'
+            assert cin_pic.shape == cout_pic.shape, f'cin.shape (z0) = {cin_pic.shape}, cout.shape (z_T) = {cout_pic.shape}'
 
             optimizer.zero_grad()
             LatentSegAdapter.zero_grad()
+            
+            """
+                Models = {
+                    'projection': pm_model if opt.use_single_gpu else pm_model.module,
+                    'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
+                }
+            """
 
-            # cin_feature = LatentSegAdapter(proj_cond) if opt.use_single_gpu else LatentSegAdapter.module(proj_cond)
-
+            # *args: (c, z_0, seg_cond)
+            # **kwargs: Models
+            
             l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond], **Models)
             l_pixel.backward()
             optimizer.step()
