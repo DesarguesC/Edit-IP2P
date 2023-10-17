@@ -734,14 +734,13 @@ class UNetModel(nn.Module):
 
 
         h = x.type(self.dtype)
-        assert len(self.input_blocks) == 4, f'len(self.input_blocks) = {len(self.input_blocks)}'
-
-        model_iter =  zip(self.input_blocks, adapter_feature)
-
-        for _, module, feature in model_iter:
+        term = len(self.input_blocks) // len(adapter_feature)
+        idx = 0
+        for module in self.input_blocks:
             h = module(h, emb, context)
-            if feature != None:
-                h = h + feature
+            if (idx+1) % term == 0:
+                h = adapter_feature[idx]
+                idx += 1
             hs.append(h)
         h = self.middle_block(h, emb, context)
         for module in self.output_blocks:
