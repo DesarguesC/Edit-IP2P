@@ -215,28 +215,31 @@ def main():
         dist.barrier()
         torch.backends.cudnn.benchmark = True
         
-        print(f'sd-{opt.local_rank}')
-        sd_model = torch.nn.parallel.DistributedDataParallel(
-            sd_model,
-            device_ids=[opt.local_rank], output_device=opt.local_rank)
-        print('sam')
-        sam_model = torch.nn.parallel.DistributedDataParallel(
-            sam_model,
-            device_ids=[opt.local_rank], output_device=opt.local_rank)
-        print('pm')
-        pm_model = torch.nn.parallel.DistributedDataParallel(
-            pm_model,
-            device_ids=[opt.local_rank], output_device=opt.local_rank)
+    
 
-    # if sd_model.model.conditioning_key == 'add-control': opt.H = 512
-    # elif sd_model.model.conditioning_key == 'cat-control': opt.H = 1024
-    # else: pass
-    print(1)
-    # if not opt.use_single_gpu:
-        
-
-    print(type(sd_model))
-    print(type(sd_model.module) if not opt.use_single_gpu else 'pass module')
+    
+    
+    LatentSegAdapter = Adapter(cin=8*64, channels=[80, 320, 640, 80], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
+    print(f'adapter-{opt.local_rank}')
+    LatentSegAdapter = torch.nn.parallel.DistributedDataParallel(
+        LatentSegAdapter,
+        device_ids=[opt.local_rank], output_device=opt.local_rank)    
+    
+    
+    print('sam')
+    sam_model = torch.nn.parallel.DistributedDataParallel(
+        sam_model,
+        device_ids=[opt.local_rank], output_device=opt.local_rank)
+    print('pm')
+    pm_model = torch.nn.parallel.DistributedDataParallel(
+        pm_model,
+        device_ids=[opt.local_rank], output_device=opt.local_rank)
+    
+    print(f'sd-{opt.local_rank}')
+    sd_model = torch.nn.parallel.DistributedDataParallel(
+        sd_model,
+        device_ids=[opt.local_rank], output_device=opt.local_rank)
+    
     
     print(2)
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
@@ -248,22 +251,12 @@ def main():
         'device': opt.device,
         'single_gpu': opt.use_single_gpu
     }
-    print(3)
     data_creator = Ip2pDatasets(**data_params)
-
     with torch.no_grad():
         data_creator.MakeData()
     print(f'Randomly loading data with length: {len(data_creator)}')
-
     train_sampler = None if opt.use_single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
-    # LatentSegAdapter = Adapter(cin=8*64, channels=[640, 320, 320, 640], nums_rb=3, ksize=1, sk=True, use_conv=False).to(opt.device)
-    LatentSegAdapter = Adapter(cin=8*64, channels=[80, 320, 640, 80], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
-    # Adapter / Control Net
     
-    if not opt.use_single_gpu:
-        LatentSegAdapter = torch.nn.parallel.DistributedDataParallel(
-            LatentSegAdapter,
-            device_ids=[opt.local_rank], output_device=opt.local_rank)
     Models = {
         'projection': pm_model if opt.use_single_gpu else pm_model.module,
         'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
