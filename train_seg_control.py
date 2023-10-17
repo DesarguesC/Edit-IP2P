@@ -218,8 +218,12 @@ def main():
     if sd_model.model.conditioning_key == 'add-control': opt.H = 512
     elif sd_model.model.conditioning_key == 'cat-control': opt.H = 1024
     else: pass
-
-    print(type(sd_model.diffusion_models))
+    
+    try:
+        print(type(sd_model.diffusion_model))
+    except Exception as err:
+        print(err)
+        pass
 
     if not opt.use_single_gpu:
         sd_model = torch.nn.parallel.DistributedDataParallel(
@@ -234,7 +238,8 @@ def main():
 
     print(type(sd_model))
     print(type(sd_model.module) if not opt.use_single_gpu else 'pass module')
-
+    
+        
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
     data_params = {
         'image_folder': opt.image_folder,
@@ -252,7 +257,7 @@ def main():
     print(f'Randomly loading data with length: {len(data_creator)}')
 
     train_sampler = None if opt.use_single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
-    LatentSegAdapter = Adapter(cin=3 * 64, channels=[320, 640, 1280, 1280][:4], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
+    LatentSegAdapter = Adapter(cin=8*64, channels=[640, 320, 320, 640], nums_rb=3, ksize=1, sk=True, use_conv=False).to(opt.device)
     # Adapter / Control Net
     
     if not opt.use_single_gpu:

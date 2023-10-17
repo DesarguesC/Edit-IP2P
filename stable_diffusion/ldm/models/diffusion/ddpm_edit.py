@@ -1389,7 +1389,8 @@ class DiffusionWrapper(pl.LightningModule):
             # c_concat: image, c_crossattn: encoded prompt
 
             assert self.diffusion_model.in_channels == 4
-            assert len(x.shape) == 5 and x.shape[-1] == x.shape[2], f'noise shape: x.shape = {x.shape}'
+            # x: bsize * 4 * 512 * 512
+            # assert len(x.shape) == 5 and x.shape[-1] == x.shape[2], f'noise shape: x.shape = {x.shape}'
             assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
                     f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
             try:
@@ -1397,24 +1398,23 @@ class DiffusionWrapper(pl.LightningModule):
                 seg_cond_latent = kwargs['seg_cond_latent']
                 pm_model = kwargs['projection']
                 adapter = kwargs['adapter']
-                assert len(seg_cond_latent.shape) + 1 == len(x.shape), f'seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
                 assert seg_cond_latent.shape == x.shape, f'inequal shape: seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
             except Exception as err:
                 assert 0, f'{err.__str__}'
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
 
             proj_cond = pm_model(seg_cond_latent).to(self.device)
-            ad_feature = adapter(proj_cond + seg_cond_latent + c_crossattn)
+            assert len(c_crossattn) == 1, f'len c_crossattn = {len(c_crossattn)}'
+            print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}, c_concat[0].shape = {c_concat[0].shape}')
+            ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
+            ad_feature_list = adapter(ad_input)
+            
             # 16 channels, cat PROMPT CLIP-feature
-            kwargs['feature_cond'] = ad_feature
-            # x = torch.cat([x] * 2, dim=2)
-            # conds = torch.cat([seg_cond, c_concat], dim=2)
-            # TODO: ADD[conds, x_noise]
-            # assert x.shape[2] == 2 * seg_cond.shape[2], f'after torch.cat: x.shape = {x.shape}'
-            # cc = torch.cat([c_crossattn, c_concat], dim=2)
+            kwargs['feature_cond'] = ad_feature_list
+            
             cc = c_crossattn + c_concat
             # TODO: keep batch num
-            out = self.diffusion_models(x, t, y=cc, **kwargs)
+            out = self.diffusion_model(x, t, y=cc, **kwargs)   # U-Net
         
         elif self.conditioning_key == 'cat-control':
             assert not isinstance(x, list) and isinstance(c_concat, list) and isinstance(c_crossattn, list), \
@@ -1432,13 +1432,15 @@ class DiffusionWrapper(pl.LightningModule):
                 assert 0, f'{err.__str__}'
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
             proj_cond = pm_model(seg_cond_latent).to(self.device)
+            
+            print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}')
             kwargs['feature_cond'] = adapter(torch.cat([proj_cond, seg_cond_latent] + c_crossattn * 2, dim=1))
             x = torch.cat([x] * 2, dim=2)
             # x = torch.cat([x, c_concat], dim=2)   ?
             cc = torch.cat([c_crossattn, c_concat], dim=2)
             # cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) * 2, dim=0)
             # TODO: keep batch num, add on H param
-            out = self.diffusion_models(x, t, y=cc, **kwargs)
+            out = self.diffusion_model(x, t, y=cc, **kwargs)
 
             # use Noise created on diffusion training step, cat Noise and my Inputs ???
             #                                       I also adopt it in inference step
