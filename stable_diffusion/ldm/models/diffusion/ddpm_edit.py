@@ -1407,14 +1407,11 @@ class DiffusionWrapper(pl.LightningModule):
             assert len(c_crossattn) == 1, f'len c_crossattn = {len(c_crossattn)}'
             print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}, c_concat[0].shape = {c_concat[0].shape}')
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
-            ad_feature_list = adapter(ad_input)
-            
-            # 16 channels, cat PROMPT CLIP-feature
-            kwargs['feature_cond'] = ad_feature_list
+            feature_list = adapter(ad_input)
             
             cc = c_crossattn + c_concat
             # TODO: keep batch num
-            out = self.diffusion_model(x, t, y=cc, **kwargs)   # U-Net
+            out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
         
         elif self.conditioning_key == 'cat-control':
             assert not isinstance(x, list) and isinstance(c_concat, list) and isinstance(c_crossattn, list), \
@@ -1440,7 +1437,7 @@ class DiffusionWrapper(pl.LightningModule):
             cc = torch.cat([c_crossattn, c_concat], dim=2)
             # cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) * 2, dim=0)
             # TODO: keep batch num, add on H param
-            out = self.diffusion_model(x, t, y=cc, **kwargs)
+            out = self.diffusion_model(x, t, context=cc, **kwargs)
 
             # use Noise created on diffusion training step, cat Noise and my Inputs ???
             #                                       I also adopt it in inference step

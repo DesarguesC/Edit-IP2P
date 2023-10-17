@@ -717,7 +717,7 @@ class UNetModel(nn.Module):
         :return: an [N x C x ...] Tensor of outputs.
         """
 
-        adapter_feature = kwargs['extra_features'] if 'extra_features' in kwargs.keys() else [None] * len(self.input_blocks)
+        adapter_feature = kwargs['latent_unet_feature'] if 'latent_unet_feature' in kwargs.keys() else [None] * len(self.input_blocks)
 
         assert (y is not None) == (
             self.num_classes is not None
