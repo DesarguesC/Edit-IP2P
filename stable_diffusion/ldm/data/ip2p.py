@@ -123,7 +123,7 @@ class Ip2pDatasets(ProjectionTo):
                 # print(f'now_path = {now_path}')
                 for image_prompt_folder in os.listdir(now_path):
                     x = randint(0, 1000)
-                    if x <= 1000 * self.pro:
+                    if x > 1000 * self.pro:
                         continue
                     if not image_prompt_folder.endswith('.ipynb_checkpoints'):
                         shard_list.extend(get_current_File(image_prompt_folder, now_path))
