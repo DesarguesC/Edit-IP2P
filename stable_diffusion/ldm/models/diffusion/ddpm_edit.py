@@ -1405,6 +1405,7 @@ class DiffusionWrapper(pl.LightningModule):
             # assert 0, f't.shape = {t.shape}'   #  -> batch size
             
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
+            print(f'ad_input.shape = {ad_input.shape}')
             feature_list = adapter(ad_input)   # no time embedding
             # feature_list = adapter(ad_input, None)
             out = self.diffusion_model(x, t, context=c_crossattn[0], latent_unet_feature=feature_list)   # U-Net
