@@ -2,7 +2,7 @@ from torch import nn
 from typing import Optional, Union
 import numpy as np
 from jieba import re
-import torch, os, cv2
+import torch, os, cv2, math
 from PIL import Image
 from einops import repeat, rearrange
 from torch.nn.parallel import DataParallel, DistributedDataParallel
@@ -119,16 +119,17 @@ class ProjectionTo():
 
     @torch.no_grad()
     def load_img(self, Path: str = None, Train: bool = True, max_resolution: int = 512 * 512) -> np.array:
+        assert Path != None, f'none path when loading image'
         if Path is None:
             assert os.path.isfile(Path)
-            import math
             hhh = (int)(math.sqrt(max_resolution))
             image = torch.randn((1, 3, hhh, hhh), device=self.device) * 255.
-            return image.numpy()
+            image = image.numpy()
+            return image
         else:
             image = Image.open(Path).convert("RGB")
             if Train:
-                w = h = 512
+                w = h = (int)(math.sqrt(max_resolution))
             else:
                 w, h = image.size
                 h, w = get_resize_shape((h, w), max_resolution=max_resolution, resize_short_edge=None)

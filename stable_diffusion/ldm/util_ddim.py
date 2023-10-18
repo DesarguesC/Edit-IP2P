@@ -1,18 +1,69 @@
-import importlib
-import math
+import cv2, torch, os, math, importlib
 from omegaconf import OmegaConf
-import cv2
-import torch
 import numpy as np
-
-import os
+from einops import rearrange
 from safetensors.torch import load_file
 from sam.seg2latent import ProjectionModel
+from sam.util import get_masked_Image_
 from inspect import isfunction
 from PIL import Image, ImageDraw, ImageFont
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+import torch.distributed as dist
 
 
+def reduce_tensor(tensor, op=dist.ReduceOp.SUM, world_size=1):
+    if not isinstance(tensor, list):
+        tensor = tensor.clone()
+        dist.all_reduce(tensor, op)
+        tensor.div_(world_size)
+        return tensor
+    else:
+        re = []
+        for r in tensor:
+            r = r.clone()
+            dist.all_reduce(r, op)
+            tensor.div_(world_size)
+            re.append(r)
+        return re
+
+@torch.no_grad()
+def img2latent(R3: np.ndarray, model, device):
+    # print(f'R3.shape = {R3.shape}')
+    if not isinstance(R3, np.ndarray): R3 = R3.numpy()
+    image = np.array(R3).astype(np.float32) / 255.
+    image = 2. * torch.from_numpy(rearrange(image, 'b h w c -> b c h w')) - 1.
+    return model.get_first_stage_encoding(model.encode_first_stage(image.clone().to(torch.float32).\
+                                                                   detach().requires_grad_(False).to(device)))
+
+@torch.no_grad()
+def img2seg(R3: np.ndarray, model, device):
+    # [8, 512, 512, 3]
+    if not isinstance(R3, np.ndarray): R3 = R3.numpy()
+    assert len(R3.shape) == 4, f'R3.shape = {R3.shape}'
+    R3 = np.array(R3.astype(np.uint8))
+    ll = R3.shape[0]
+    assert ll != 1
+    R3_ = [model(R3[i].squeeze()) for i in range(ll)]
+    # each R3[0] -> each object
+    mask = get_masked_Image_(R3_, use_alpha=False)
+    return torch.cat([torch.from_numpy(rearrange(u, 'h w c -> 1 c h w')).clone().\
+                                       to(torch.float32).detach().requires_grad_(False) for u in mask], dim=0).to('cpu')
+
+
+@torch.no_grad()
+def seg2latent(seg: torch.Tensor, model, device):
+    # [8, 3, 512, 512]
+    if not isinstance(seg, np.ndarray): seg = seg.numpy()
+    image = 2. * torch.from_numpy(np.array(seg).astype(np.float32) / 255.) - 1.
+    return model.get_first_stage_encoding(model.encode_first_stage(image.clone().to(torch.float32).\
+                                                                   detach().requires_grad_(False).to(device)))
+
+@torch.no_grad()
+def sl2latent(seg: torch.Tensor, model, device):
+    # assert isinstance(R3, torch.Tensor), f'type(R3) = {type(R3)}   ???'
+    if isinstance(seg, list):
+        return torch.cat([model(seg_) for seg_ in seg], dim=0).to(device)
+    return model(seg).to(device)
 
 
 def DEFAULT_NEGATIVE_PROMPT() -> str:

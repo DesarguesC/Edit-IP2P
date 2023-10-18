@@ -87,19 +87,22 @@ class Adapter(nn.Module):
         self.body = nn.ModuleList(self.body)
         self.conv_in = nn.Conv2d(cin, channels[0], 3, 1, 1)
 
-    def forward(self, x):
-        # unshuffle
-        x = self.unshuffle(x)
-        # extract features
-        features = []
-        x = self.conv_in(x)
-        for i in range(len(self.channels)):
-            for j in range(self.nums_rb):
-                idx = i * self.nums_rb + j
-                x = self.body[idx](x)
-            features.append(x)
+    def forward(self, x, t=None):
+        if t is None:
+            # unshuffle
+            x = self.unshuffle(x)
+            # extract features
+            features = []
+            x = self.conv_in(x)
+            for i in range(len(self.channels)):
+                for j in range(self.nums_rb):
+                    idx = i * self.nums_rb + j
+                    x = self.body[idx](x)
+                features.append(x)
 
-        return features
+            return features
+        else:
+            pass
 
 
 class LayerNorm(nn.LayerNorm):

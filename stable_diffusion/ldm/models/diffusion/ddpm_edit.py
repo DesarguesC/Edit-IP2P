@@ -1352,8 +1352,7 @@ class DiffusionWrapper(pl.LightningModule):
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, **kwargs):
         
-        # t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long
-        # x: x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)  # from p_losses function
+        
 
         """
             extra_feature: 
@@ -1383,12 +1382,8 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t, context=cc)
         
         elif self.conditioning_key == 'add-control':
-            # assert not isinstance(x, list) and isinstance(c_concat, list), f'type(x) = {type(x)}, type(c_concat) = {type(c_concat)}, type(c_crosattn) = {type(c_crossattn)}'
-            # c_concat: image, c_crossattn: encoded prompt
-
             assert self.diffusion_model.in_channels == 4
             # x: bsize * 4 * 512 * 512
-            # assert len(x.shape) == 5 and x.shape[-1] == x.shape[2], f'noise shape: x.shape = {x.shape}'
             assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
                     f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
             try:
@@ -1403,13 +1398,15 @@ class DiffusionWrapper(pl.LightningModule):
 
             proj_cond = pm_model(seg_cond_latent).to(self.device)
             assert len(c_crossattn) == 1, f'len c_crossattn = {len(c_crossattn)}'
-            # print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}, c_concat[0].shape = {c_concat[0].shape}')
             
+            # t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long
+            # x: x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)  # from p_losses function
             
-            assert 0, f't.shape = {t.shape}'
-            # timing = torch.full_like(proj_cond, t)
+            # assert 0, f't.shape = {t.shape}'   #  -> batch size
+            
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
-            feature_list = adapter(ad_input)
+            feature_list = adapter(ad_input)   # no time embedding
+            # feature_list = adapter(ad_input, None)
             out = self.diffusion_model(x, t, context=c_crossattn[0], latent_unet_feature=feature_list)   # U-Net
         
         elif self.conditioning_key == 'cat-control':

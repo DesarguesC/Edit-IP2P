@@ -1,8 +1,6 @@
 import numpy as np
-import torch
+import torch, cv2, os
 import matplotlib.pyplot as plt
-import cv2
-import os
 from PIL import Image
 
 
@@ -51,7 +49,7 @@ def show_anns(anns, name, base_path=None, reverse=False, **kwargs):
     img.save(base + '_mask_folder/' + name + '_masked.jpg')
     return mask_vector
 
-
+@torch.no_grad()
 def get_masked_Image(seg: list = None, no_color: bool = False, use_alpha=True):
     assert seg != None
     # seq_choice = kwargs['seq_choice'] if 'seq_choice' in kwargs.keys() else [1] * len(seg)
@@ -80,3 +78,10 @@ def get_masked_Image(seg: list = None, no_color: bool = False, use_alpha=True):
     # img = img.convert('RGB')
 
     return img
+
+
+def get_masked_Image_(seg: list = None, no_color: bool = False, use_alpha=True):
+    if isinstance(seg[0], dict):
+        return get_masked_Image(seg=seg, no_color=no_color, use_alpha=use_alpha)
+    elif isinstance(seg[0], list):  # use this
+        return [get_masked_Image(seg=seg_, no_color=no_color, use_alpha=use_alpha) for seg_ in seg]

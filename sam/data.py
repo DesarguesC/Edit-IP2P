@@ -16,7 +16,7 @@ from random import randint
 
 class DataCreator():
     def __init__(self, image_folder: any = None, sd_model: any = None, sam: any = None, \
-                 batch_size: int = 1, downsample_factor=8, data_scale=0.4, logger = None):
+                 batch_size: int = 1, downsample_factor=8, data_scale=0.1, logger = None):
         assert isinstance(image_folder, list) or isinstance(image_folder, str), 'path error when getting DataCreator initialized'
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.path = image_folder if isinstance(image_folder, list) else [image_folder]

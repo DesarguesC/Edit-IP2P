@@ -717,7 +717,7 @@ class UNetModel(nn.Module):
         :return: an [N x C x ...] Tensor of outputs.
         """
 
-        adapter_feature = kwargs['latent_unet_feature'] if 'latent_unet_feature' in kwargs.keys() else [None] * len(self.input_blocks)
+        adapter_feature = kwargs['latent_unet_feature'] if 'latent_unet_feature' in kwargs.keys() else ([None] * len(self.input_blocks))
 
         assert (y is not None) == (
             self.num_classes is not None
@@ -730,16 +730,13 @@ class UNetModel(nn.Module):
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
-        # feature_iter = iter(adapter_feature)
-
-
         h = x.type(self.dtype)
         term = len(self.input_blocks) // len(adapter_feature)
         idx = 0
         for module in self.input_blocks:
             h = module(h, emb, context)
-            if (idx+1) % term == 0:
-                h = adapter_feature[idx]
+            if (idx+1) % term == 0 and adapter_feature[idx] != None:
+                h += 1. * adapter_feature[idx]
                 idx += 1
             hs.append(h)
         h = self.middle_block(h, emb, context)

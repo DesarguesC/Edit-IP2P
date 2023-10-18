@@ -5,11 +5,13 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.nn.functional import kl_div
 import argparse
+import torch.multiprocessing as mp
+import torch.distributed as dist
 
 sys.path.append('../')
 sys.path.append('./stable_diffusion')
 
-from stable_diffusion.ldm.util_ddim import load_inference_train
+from stable_diffusion.ldm.util_ddim import (load_inference_train, reduce_tensor, img2latent, img2seg, seg2latent, sl2latent)
 from stable_diffusion.ldm.inference_base import str2bool
 from stable_diffusion.eldm.adapter import Adapter
 from basicsr.utils import (get_root_logger, get_time_str,
@@ -123,6 +125,12 @@ def parsr_args():
         help="frequency to save the training datas",
     )
     parser.add_argument(
+        "--max_resolution",
+        type=int,
+        default=512 * 512,            # use cat-control, cat at channels: 2 * 512
+        help="image height, in pixel space",
+    )
+    parser.add_argument(
         "--H",
         type=int,
         default=512 * 2,            # use cat-control, cat at channels: 2 * 512
@@ -195,66 +203,58 @@ def parsr_args():
 def main():
     opt = parsr_args()
     opt.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    if not opt.use_single_gpu:
-        # lauch multi-GPU training process
-        import torch.multiprocessing as mp
-        import torch.distributed as dist
-        if mp.get_start_method(allow_none=True) is None:
-            mp.set_start_method('spawn')
-        rank = int(os.environ['RANK'])
-        print(f'current rank: {rank}')
-        num_gpus = torch.cuda.device_count()
-        torch.cuda.set_device(rank % num_gpus)
-        dist.init_process_group(backend='nccl', rank=rank)
-        dist.barrier()
-        torch.backends.cudnn.benchmark = True
-    sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
-    print(f'sd-{opt.local_rank}')
-    sd_model = torch.nn.parallel.DistributedDataParallel(
-        sd_model,
-        device_ids=[opt.local_rank], output_device=opt.local_rank)
-
     experiments_root = './exp-segControlNet/'
     experiments_root = mkdir(experiments_root, opt.local_rank)
     log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     
+    
+    
+    if not opt.use_single_gpu:
+        # lauch multi-GPU training process
+        if mp.get_start_method(allow_none=True) is None:
+            mp.set_start_method('spawn')
+        rank = opt.local_rank
+        num_gpus = torch.cuda.device_count()
+        dist.init_process_group(backend='nccl', rank=rank, init_method='env://')
+        torch.cuda.set_device(rank % num_gpus)
+        dist.barrier()
+        torch.backends.cudnn.benchmark = True
+        device = torch.device("cuda", rank)
         
-#     if not single_gpu:
+        print(f'current rank: {rank}')
         
-#         import torch.multiprocessing as mp
-#         import torch.distributed as dist
-#         if mp.get_start_method(allow_none=True) is None:
-#             mp.set_start_method('spawn')
-#         rank = int(os.environ['RANK'])
-#         num_gpus = torch.cuda.device_count()
-#         torch.cuda.set_device(rank % num_gpus)
-#         dist.init_process_group(backend='nccl')
-#         dist.barrier()
-#         torch.backends.cudnn.benchmark = True
-
+        
+    sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
+    print(f'sd-{opt.local_rank}')
+    if not opt.use_single_gpu:
+        sd_model = torch.nn.parallel.DistributedDataParallel(
+            sd_model,
+            device_ids=[opt.local_rank], output_device=opt.local_rank)
+    torch.backends.cudnn.benchmark = True
     
     
-    LatentSegAdapter = Adapter(cin=8*64, channels=[80, 320, 640, 80], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device)
-    print(f'adapter-{opt.local_rank}')
-    LatentSegAdapter = torch.nn.parallel.DistributedDataParallel(
-        LatentSegAdapter,
-        device_ids=[opt.local_rank], output_device=opt.local_rank)    
+    LatentSegAdapter = Adapter(cin=8*64, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
     
+    if not opt.use_single_gpu:
+        print(f'adapter-{opt.local_rank}')
+        LatentSegAdapter = torch.nn.parallel.DistributedDataParallel(
+            LatentSegAdapter,
+            device_ids=[opt.local_rank], output_device=opt.local_rank)
+        torch.backends.cudnn.benchmark = True
+        print(f'sam-{opt.local_rank}')
+        sam_model = torch.nn.parallel.DistributedDataParallel(
+            sam_model,
+            device_ids=[opt.local_rank], output_device=opt.local_rank)
+        torch.backends.cudnn.benchmark = True
+        print(f'pm-{opt.local_rank}')
+        pm_model = torch.nn.parallel.DistributedDataParallel(
+            pm_model,
+            device_ids=[opt.local_rank], output_device=opt.local_rank)
+        torch.backends.cudnn.benchmark = True
     
-    print(f'sam-{opt.local_rank}')
-    sam_model = torch.nn.parallel.DistributedDataParallel(
-        sam_model,
-        device_ids=[opt.local_rank], output_device=opt.local_rank)
-    print(f'pm-{opt.local_rank}')
-    pm_model = torch.nn.parallel.DistributedDataParallel(
-        pm_model,
-        device_ids=[opt.local_rank], output_device=opt.local_rank)
+    LatentSegAdapter.train()
     
-    
-    
-    
-    print(2)
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
     data_params = {
         'image_folder': opt.image_folder,
@@ -262,19 +262,20 @@ def main():
         'sam_model': mask_generator,
         'pm_model': pm_model,
         'device': opt.device,
-        'single_gpu': opt.use_single_gpu
+        'single_gpu': opt.use_single_gpu,
     }
     data_creator = Ip2pDatasets(**data_params)
     with torch.no_grad():
-        data_creator.MakeData()
+        data_creator.MakeData(opt.max_resolution)
     print(f'Randomly loading data with length: {len(data_creator)}')
-    train_sampler = None if opt.use_single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
+    
     
     Models = {
         'projection': pm_model if opt.use_single_gpu else pm_model.module,
         'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
     }
-
+    
+    torch.cuda.empty_cache()
 
     # optimizer
     params = list(LatentSegAdapter.parameters())
@@ -286,6 +287,8 @@ def main():
     
     import time
     start_time = time.time()
+    
+    train_sampler = None if opt.use_single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
     train_dataloader = tqdm(DataLoader(dataset=data_creator, batch_size=opt.bsize, shuffle=True, drop_last=True), \
                             desc='Procedure', total=len(data_creator)) \
         if opt.use_single_gpu else torch.utils.data.DataLoader(
@@ -298,16 +301,17 @@ def main():
         sampler=train_sampler)
     print('sampler init time cost: %.6f'%(time.time() - start_time))
     
+    sd_bare, sam_bare, pm_bare = get_bare_model(sd_model), get_bare_model(sam_model), get_bare_model(pm_model)
+    
+    
+    
     # training
     for epoch in range(opt.epochs):
-        # train_dataloader.sampler.set_epoch(epoch)
-        # train
-        if not opt.use_single_gpu: train_dataloader.sampler.set_epoch(epoch)
+        if not opt.use_single_gpu: train_sampler.set_epoch(epoch)
         logger.info(f'Current Training Procedure: [{epoch + 1}|{opt.epochs}]')
 
         for _, data in enumerate(train_dataloader):
             current_iter += 1
-
             """
                 data = {
                     'cin': cin_img, 
@@ -316,46 +320,41 @@ def main():
                     'seg_cond': seg_cond
                 }
             """
-            # start_time = time.time()
-            cin_pic, cout_pic = data['cin'], data['cout']
-            # print('get cin/cout in current-iter %d cost: %.6f(s)'%(current_iter, time.time() - start_time))
-            
-            # start_time = time.time()
-            seg_cond_latent, seg_cond, edit_prompt = data['seg_cond_latent'], data['seg_cond'], data['edit']
-            # print('get seg_cond/edit_prompt in current-iter %d cost: %.6f(s)'%(current_iter, time.time() - start_time))
-            
+            cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
+            # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # low time cost tested
-            
+
             with torch.no_grad():
-                c = sd_model.module.get_learned_conditioning(edit_prompt) \
-                        if not opt.use_single_gpu else sd_model.get_learned_conditioning(edit_prompt)
-                z_0 = cin_pic.to(opt.device)
-                z_T = cout_pic.to(opt.device)
+                # cin_pic.shape = [8, 512, 512, 3]
+                print(f'cin_pic.shape = {cin_pic.shape}')
+                seg_cond = img2seg(cin_pic, mask_generator, opt.device)
+                c = sd_bare.get_learned_conditioning(edit_prompt)
+                z_0 = img2latent(cin_pic, sd_bare, opt.device)
+                z_T = img2latent(cout_pic, sd_bare, opt.device)
+                del cin_pic 
+                del cout_pic
                 
-                # already cast to latent space
-                # sd_model.module.get_first_stage_encoding(\
-                #     sd_model.module.encode_first_stage((2. * cout_pic - 1.).to(opt.device)))
+                seg_cond_latent = seg2latent(seg_cond, sd_bare, opt.device)
+                seg_cond_latent = sl2latent(seg_cond_latent, pm_bare, opt.device)
+                seg_cond.to(opt.device)
 
-
-            assert cin_pic.shape == cout_pic.shape, f'cin.shape (z0) = {cin_pic.shape}, cout.shape (z_T) = {cout_pic.shape}'
+            assert z_0.shape == z_T.shape, f'z0.shape = {z_0.shape}, zT.shape = {z_T.shape}'
 
             optimizer.zero_grad()
             LatentSegAdapter.zero_grad()
-            
+
             """
                 Models = {
                     'projection': pm_model if opt.use_single_gpu else pm_model.module,
                     'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
                 }
             """
-
             # *args: (c, z_0, seg_cond)
             # **kwargs: Models
-            
+
             l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond, seg_cond_latent], **Models)
             l_pixel.backward()
             optimizer.step()
-
 
             if current_iter % opt.print_fq == 0:
                 loss_info = 'current_iter: %d \nEPOCH: [%d|%d], L2 Loss in Diffusion Steps: %.6f' % (current_iter, epoch + 1, opt.epochs, l_pixel)
@@ -365,7 +364,7 @@ def main():
                 # save checkpoint
                 rank, _ = get_dist_info()
                 logger.info(f'rank = {rank}')
-                
+
         if (rank == 0) and ((current_iter + 1) % opt.save_fq == 0):
             save_filename = f'model_iter_{current_iter + 1}.pth'
             save_path = os.path.join(experiments_root, 'models', save_filename)
