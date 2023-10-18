@@ -195,13 +195,6 @@ def parsr_args():
 def main():
     opt = parsr_args()
     opt.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
-
-    experiments_root = './exp-segControlNet/'
-    experiments_root = mkdir(experiments_root)
-    log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
-    logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-    print(0)
     if not opt.use_single_gpu:
         # lauch multi-GPU training process
         import torch.multiprocessing as mp
@@ -209,11 +202,23 @@ def main():
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method('spawn')
         rank = int(os.environ['RANK'])
+        print(f'current rank: {rank}')
         num_gpus = torch.cuda.device_count()
         torch.cuda.set_device(rank % num_gpus)
         dist.init_process_group(backend='nccl', rank=rank)
         dist.barrier()
         torch.backends.cudnn.benchmark = True
+    sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
+    print(f'sd-{opt.local_rank}')
+    sd_model = torch.nn.parallel.DistributedDataParallel(
+        sd_model,
+        device_ids=[opt.local_rank], output_device=opt.local_rank)
+
+    experiments_root = './exp-segControlNet/'
+    experiments_root = mkdir(experiments_root)
+    log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
+    logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
+    
         
 #     if not single_gpu:
         
@@ -246,10 +251,7 @@ def main():
         pm_model,
         device_ids=[opt.local_rank], output_device=opt.local_rank)
     
-    print(f'sd-{opt.local_rank}')
-    sd_model = torch.nn.parallel.DistributedDataParallel(
-        sd_model,
-        device_ids=[opt.local_rank], output_device=opt.local_rank)
+    
     
     
     print(2)
