@@ -184,6 +184,12 @@ def parsr_args():
         help='node rank for distributed training'
     )
     parser.add_argument(
+        '--data_pro',
+        default=8,
+        type=int,
+        help='read in data pro'
+    )
+    parser.add_argument(
         '--launcher',
         default='pytorch',
         type=str,
@@ -234,7 +240,7 @@ def main():
     torch.backends.cudnn.benchmark = True
     
     
-    LatentSegAdapter = Adapter(cin=8*64, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
+    LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
     
     if not opt.use_single_gpu:
         print(f'adapter-{opt.local_rank}')
@@ -263,6 +269,7 @@ def main():
         'pm_model': pm_model,
         'device': opt.device,
         'single_gpu': opt.use_single_gpu,
+        'data_pro': opt.data_pro / 10.
     }
     data_creator = Ip2pDatasets(**data_params)
     with torch.no_grad():
@@ -308,6 +315,7 @@ def main():
     # training
     for epoch in range(opt.epochs):
         if not opt.use_single_gpu: train_sampler.set_epoch(epoch)
+        
         logger.info(f'Current Training Procedure: [{epoch + 1}|{opt.epochs}]')
 
         for _, data in enumerate(train_dataloader):
@@ -320,13 +328,14 @@ def main():
                     'seg_cond': seg_cond
                 }
             """
+            
             cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
             # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # low time cost tested
 
             with torch.no_grad():
                 # cin_pic.shape = [8, 512, 512, 3]
-                print(f'cin_pic.shape = {cin_pic.shape}')
+                # print(f'cin_pic.shape = {cin_pic.shape}')
                 seg_cond = img2seg(cin_pic, mask_generator, opt.device)
                 c = sd_bare.get_learned_conditioning(edit_prompt)
                 z_0 = img2latent(cin_pic, sd_bare, opt.device)
@@ -362,29 +371,30 @@ def main():
                 logger.info(loss_dict)
 
                 # save checkpoint
-                rank, _ = get_dist_info()
+                rank = opt.local_rank
                 logger.info(f'rank = {rank}')
+            
+            logger.info(f'Current iter done. Iter Num: {current_iter}')
+            if (rank == 0) and ((current_iter + 1) % opt.save_fq == 0):
+                save_filename = f'model_iter_{current_iter + 1}.pth'
+                save_path = os.path.join(experiments_root, 'models', save_filename)
+                save_dict = {}
+                ad_bare = get_bare_model(LatentSegAdapter)
+                state_dict = ad_bare.state_dict()
+                for key, param in state_dict.items():
+                    if key.startswith('module.'):  # remove unnecessary 'module.'
+                        key = key[7:]
+                    save_dict[key] = param.cpu()
 
-        if (rank == 0) and ((current_iter + 1) % opt.save_fq == 0):
-            save_filename = f'model_iter_{current_iter + 1}.pth'
-            save_path = os.path.join(experiments_root, 'models', save_filename)
-            save_dict = {}
-            ad_bare = get_bare_model(LatentSegAdapter)
-            state_dict = ad_bare.state_dict()
-            for key, param in state_dict.items():
-                if key.startswith('module.'):  # remove unnecessary 'module.'
-                    key = key[7:]
-                save_dict[key] = param.cpu()
+                logger.info(f'saving pth to path: {save_path}')
+                torch.save(save_dict, save_path)
+                # save state
 
-            logger.info(f'saving pth to path: {save_path}')
-            torch.save(save_dict, save_path)
-            # save state
-
-            state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
-            save_filename = f'{current_iter + 1}.state'
-            save_path = os.path.join(experiments_root, 'training_states', save_filename)
-            logger.info(f'saving state to path: {save_path}')
-            torch.save(state, save_path)
+                state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
+                save_filename = f'{current_iter + 1}.state'
+                save_path = os.path.join(experiments_root, 'training_states', save_filename)
+                logger.info(f'saving state to path: {save_path}')
+                torch.save(state, save_path)
 
     if (rank == 0):
         save_filename = f'model_epo_final.pth'

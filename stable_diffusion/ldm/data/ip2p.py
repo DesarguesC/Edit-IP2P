@@ -1,4 +1,5 @@
 import torch, os, json, cv2
+from random import randint
 import os.path as osp
 from sam.seg2latent import ProjectionTo
 from jieba import re
@@ -66,7 +67,7 @@ def get_current_File(folder_path: str = None, base_path: str = None) -> list:
     return current_folder_FileList
 
 class Ip2pDatasets(ProjectionTo):
-    def __init__(self, image_folder, sd_model, sam_model, pm_model, device='cuda', single_gpu=True):
+    def __init__(self, image_folder, sd_model, sam_model, pm_model, device='cuda', single_gpu=True, data_pro=0.5):
         super().__init__(sam_model=sam_model, sd_model=sd_model, pm_model=pm_model, device=device)
         self.image_folder = image_folder
         """
@@ -93,6 +94,7 @@ class Ip2pDatasets(ProjectionTo):
         self.max_resolution = 512*512
         self.total_data_path_list = []
         self.length = 0
+        self.pro = data_pro
         self.max_resolution=512*512
 
     @torch.no_grad()
@@ -120,6 +122,9 @@ class Ip2pDatasets(ProjectionTo):
                 # shard = '........./shard-xx'
                 # print(f'now_path = {now_path}')
                 for image_prompt_folder in os.listdir(now_path):
+                    x = randint(0, 1000)
+                    if x <= 1000 * self.pro:
+                        continue
                     if not image_prompt_folder.endswith('.ipynb_checkpoints'):
                         shard_list.extend(get_current_File(image_prompt_folder, now_path))
                         # corresponds to base_path: shard-00, shard-01, ..., shard-29
