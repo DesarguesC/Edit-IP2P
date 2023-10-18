@@ -206,8 +206,8 @@ def main():
         # lauch multi-GPU training process
         import torch.multiprocessing as mp
         import torch.distributed as dist
-        # if mp.get_start_method(allow_none=True) is None:
-            # mp.set_start_method('spawn')
+        if mp.get_start_method(allow_none=True) is None:
+            mp.set_start_method('spawn')
         rank = int(os.environ['RANK'])
         num_gpus = torch.cuda.device_count()
         torch.cuda.set_device(rank % num_gpus)
@@ -215,7 +215,18 @@ def main():
         dist.barrier()
         torch.backends.cudnn.benchmark = True
         
-    
+#     if not single_gpu:
+        
+#         import torch.multiprocessing as mp
+#         import torch.distributed as dist
+#         if mp.get_start_method(allow_none=True) is None:
+#             mp.set_start_method('spawn')
+#         rank = int(os.environ['RANK'])
+#         num_gpus = torch.cuda.device_count()
+#         torch.cuda.set_device(rank % num_gpus)
+#         dist.init_process_group(backend='nccl')
+#         dist.barrier()
+#         torch.backends.cudnn.benchmark = True
 
     
     
@@ -226,11 +237,11 @@ def main():
         device_ids=[opt.local_rank], output_device=opt.local_rank)    
     
     
-    print('sam')
+    print(f'sam-{opt.local_rank}')
     sam_model = torch.nn.parallel.DistributedDataParallel(
         sam_model,
         device_ids=[opt.local_rank], output_device=opt.local_rank)
-    print('pm')
+    print(f'pm-{opt.local_rank}')
     pm_model = torch.nn.parallel.DistributedDataParallel(
         pm_model,
         device_ids=[opt.local_rank], output_device=opt.local_rank)
