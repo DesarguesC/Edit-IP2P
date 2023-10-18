@@ -882,7 +882,7 @@ class LatentDiffusion(DDPM):
 
     def forward(self, x, c, *args, **kwargs):
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
-        
+        # keep batch size
         if self.model.conditioning_key is not None:
             assert c is not None
             if self.cond_stage_trainable:
@@ -1351,7 +1351,8 @@ class DiffusionWrapper(pl.LightningModule):
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'cut', 'add-control', 'cat-control', 'ip2p-control']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, **kwargs):
-
+        
+        # t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long
         # x: x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)  # from p_losses function
 
         """
@@ -1404,6 +1405,9 @@ class DiffusionWrapper(pl.LightningModule):
             assert len(c_crossattn) == 1, f'len c_crossattn = {len(c_crossattn)}'
             # print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}, c_concat[0].shape = {c_concat[0].shape}')
             
+            
+            assert 0, f't.shape = {t.shape}'
+            # timing = torch.full_like(proj_cond, t)
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
             feature_list = adapter(ad_input)
             out = self.diffusion_model(x, t, context=c_crossattn[0], latent_unet_feature=feature_list)   # U-Net
