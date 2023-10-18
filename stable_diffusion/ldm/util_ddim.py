@@ -307,7 +307,7 @@ def load_img(opt=None, path=None):
     image = Image.open(path).convert("RGB")
     w, h = image.size   # check
     h, w = get_resize_shape((h,w), max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge) \
-                                                                                    if opt != None else (512, 512)
+                                                                                    if opt != None else (256, 256)
     if opt != None:
         print(f"loaded input image of size ({w}, {h}) from {path}")
 

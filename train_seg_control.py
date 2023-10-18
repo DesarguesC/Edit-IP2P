@@ -22,11 +22,11 @@ from sam.data import DataCreator
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 
-def mkdir(path: str) -> str:
+def mkdir(path: str, rank) -> str:
     if not osp.exists(path):
         os.makedirs(path)
     base_count = len(os.listdir(path)) if osp.exists(path) else 0
-    path = osp.join(path, f'{base_count:05}')
+    path = osp.join(path, f'{base_count:05}--rank:{rank}')
 
     while True:
         """
@@ -215,7 +215,7 @@ def main():
         device_ids=[opt.local_rank], output_device=opt.local_rank)
 
     experiments_root = './exp-segControlNet/'
-    experiments_root = mkdir(experiments_root)
+    experiments_root = mkdir(experiments_root, opt.local_rank)
     log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     
@@ -358,15 +358,16 @@ def main():
 
 
             if current_iter % opt.print_fq == 0:
-                loss_info = '[%d|%d], L2 Loss in Diffusion Steps: %.6f' % (epoch + 1, opt.epochs, l_pixel)
+                loss_info = 'current_iter: %d \nEPOCH: [%d|%d], L2 Loss in Diffusion Steps: %.6f' % (current_iter, epoch + 1, opt.epochs, l_pixel)
                 logger.info(loss_info)
                 logger.info(loss_dict)
 
                 # save checkpoint
                 rank, _ = get_dist_info()
                 logger.info(f'rank = {rank}')
-        if (rank == 0) and ((epoch + 1) % opt.save_fq == 0):
-            save_filename = f'model_epo_{epoch + 1}.pth'
+                
+        if (rank == 0) and ((current_iter + 1) % opt.save_fq == 0):
+            save_filename = f'model_iter_{current_iter + 1}.pth'
             save_path = os.path.join(experiments_root, 'models', save_filename)
             save_dict = {}
             ad_bare = get_bare_model(LatentSegAdapter)
