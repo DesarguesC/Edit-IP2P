@@ -70,14 +70,15 @@ class ResnetBlock(nn.Module):
 
         
 class TimeEmbed(nn.Module):
-    def __init__(self, channles=4, repeat_only=False):
+    def __init__(self, channels=4):
         self.time_embedding = nn.Sequential(
             nn.Linear(channels, 2 * channels),
             nn.Silu(),
             nn.Linear(2 * channels, channels)
         )
+
     def forward(self, t):
-        
+        return self.time_embedding(t)
         
         
 def view_shape(u: list):
@@ -86,11 +87,12 @@ def view_shape(u: list):
         print(i.shape)
 
 class Adapter(nn.Module):
-    def __init__(self, channels=[320, 640, 1280, 1280], nums_rb=3, cin=64, ksize=3, sk=False, use_conv=True):
+    def __init__(self, channels=[320, 640, 1280, 1280], nums_rb=3, cin=64, ksize=3, unshuffle=4, sk=False, use_conv=True, repeat_only=False):
         super(Adapter, self).__init__()
-        self.unshuffle = nn.PixelUnshuffle(4)
+        self.unshuffle = nn.PixelUnshuffle(unshuffle)
         self.cin = cin
-        self.time_emb = TimeEmbed(channels=self.cin, repeat_only=False)
+        self.repeat_only = repeat_only
+        self.time_emb = TimeEmbed(channels=self.cin // (unshuffle ** 2), repeat_only=repeat_only)
         self.channels = channels
         self.nums_rb = nums_rb
         self.body = []
@@ -107,22 +109,21 @@ class Adapter(nn.Module):
         
 
     def forward(self, x, t=None):
-        t_emb = self.time_emb(timestep_embedding(t, self.cin, repeat_only=False)) if t != None else None
+        t_emb = timestep_embedding(timestep_embedding(t, self.cin, repeat_only=self.repeat_only)) if t != None else None
         print(f'embedded time shape: {t_emb.shape}')
         # unshuffle
         x = self.unshuffle(x)
         # extract features
         features = []
-        t_ = [t_emb]
+        t_ = []
         x = self.conv_in(x)
         for i in range(len(self.channels)):
             for j in range(self.nums_rb):
                 idx = i * self.nums_rb + j
                 x = self.body[idx](x)
-                t0 = self.body[idx](t_[-1]) if t != None else None
+                t0 = self.time_emb(t_emb) if t != None else None
             features.append(x)
             t_.append(t0)
-        del t[0]
         print('features')
         view_shape(features)
         print('features')

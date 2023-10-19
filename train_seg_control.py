@@ -244,7 +244,7 @@ def main():
     torch.backends.cudnn.benchmark = True
     
     
-    LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
+    LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
     
     if not opt.use_single_gpu:
         print(f'adapter-{opt.local_rank}')
