@@ -201,10 +201,14 @@ def parsr_args():
         default=False,
         help='node rank for distributed training'
     )
-
+    parser.add_argument(
+        '--adapter_time_emb',
+        type=str2bool,
+        default=False,
+        help='whether to add embedded time feature into adapter'
+    )
     opt = parser.parse_args()
     return opt
-
 
 def main():
     opt = parsr_args()
@@ -279,7 +283,8 @@ def main():
     
     Models = {
         'projection': pm_model if opt.use_single_gpu else pm_model.module,
-        'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
+        'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module,
+        'time_emb': opt.adapter_time_emb
     }
     
     torch.cuda.empty_cache()
@@ -355,7 +360,8 @@ def main():
             """
                 Models = {
                     'projection': pm_model if opt.use_single_gpu else pm_model.module,
-                    'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module
+                    'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module,
+                    'time_emb': opt.adapter_time_emb
                 }
             """
             # *args: (c, z_0, seg_cond)

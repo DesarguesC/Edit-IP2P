@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from collections import OrderedDict
-from stable_diffusion.ldm.modules.diffusionmodules.util import (conv_nd, avg_pool_nd)
+from stable_diffusion.ldm.modules.diffusionmodules.util import (conv_nd, avg_pool_nd, timestep_embedding)
 
 
 class Downsample(nn.Module):
@@ -68,11 +68,29 @@ class ResnetBlock(nn.Module):
         else:
             return h + x
 
+        
+class TimeEmbed(nn.Module):
+    def __init__(self, channles=4, repeat_only=False):
+        self.time_embedding = nn.Sequential(
+            nn.Linear(channels, 2 * channels),
+            nn.Silu(),
+            nn.Linear(2 * channels, channels)
+        )
+    def forward(self, t):
+        
+        
+        
+def view_shape(u: list):
+    assert isinstance(u, list), f'type: {type(u)}'
+    for i in u:
+        print(i.shape)
 
 class Adapter(nn.Module):
     def __init__(self, channels=[320, 640, 1280, 1280], nums_rb=3, cin=64, ksize=3, sk=False, use_conv=True):
         super(Adapter, self).__init__()
         self.unshuffle = nn.PixelUnshuffle(4)
+        self.cin = cin
+        self.time_emb = TimeEmbed(channels=self.cin, repeat_only=False)
         self.channels = channels
         self.nums_rb = nums_rb
         self.body = []
@@ -86,23 +104,34 @@ class Adapter(nn.Module):
                         ResnetBlock(channels[i], channels[i], down=False, ksize=ksize, sk=sk, use_conv=use_conv))
         self.body = nn.ModuleList(self.body)
         self.conv_in = nn.Conv2d(cin, channels[0], 3, 1, 1)
+        
 
     def forward(self, x, t=None):
-        if t is None:
-            # unshuffle
-            x = self.unshuffle(x)
-            # extract features
-            features = []
-            x = self.conv_in(x)
-            for i in range(len(self.channels)):
-                for j in range(self.nums_rb):
-                    idx = i * self.nums_rb + j
-                    x = self.body[idx](x)
-                features.append(x)
-
-            return features
-        else:
-            pass
+        t_emb = self.time_emb(timestep_embedding(t, self.cin, repeat_only=False)) if t != None else None
+        print(f'embedded time shape: {t_emb.shape}')
+        # unshuffle
+        x = self.unshuffle(x)
+        # extract features
+        features = []
+        t_ = [t_emb]
+        x = self.conv_in(x)
+        for i in range(len(self.channels)):
+            for j in range(self.nums_rb):
+                idx = i * self.nums_rb + j
+                x = self.body[idx](x)
+                t0 = self.body[idx](t_[-1]) if t != None else None
+            features.append(x)
+            t_.append(t0)
+        del t[0]
+        print('features')
+        view_shape(features)
+        print('features')
+        view_shape(t_)
+        assert len(t_) == len(features), f'length not match: len(t_) = {len(t_)}, len(features) = {len(features)}'
+        return features, t_
+            
+            
+            
 
 
 class LayerNorm(nn.LayerNorm):

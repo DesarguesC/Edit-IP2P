@@ -1382,42 +1382,31 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t, context=cc)
         
         elif self.conditioning_key == 'add-control':
+            
             assert self.diffusion_model.in_channels == 4
             # x: bsize * 4 * 512 * 512
             assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
                     f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
             try:
-
+                use_time_emb = kwargs['time_emb']
                 seg_cond_latent = kwargs['seg_cond_latent']
                 pm_model = kwargs['projection']
                 adapter = kwargs['adapter']
                 assert seg_cond_latent.shape == x.shape, f'inequal shape: seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
-            except Exception as err:
-                assert 0, f'{err.__str__}'
             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-
             proj_cond = pm_model(seg_cond_latent).to(self.device)
-            assert len(c_crossattn) == 1, f'len c_crossattn = {len(c_crossattn)}'
-            
-            # t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long
-            # x: x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)  # from p_losses function
-            
-            # assert 0, f't.shape = {t.shape}'   #  -> batch size
             
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
             print(f'ad_input.shape = {ad_input.shape}')
-            feature_list = adapter(ad_input)   # no time embedding
-            # feature_list = adapter(ad_input, None)
+            feature_list = adapter(ad_input, t = t if use_time_emb else None)   # no time embedding
             out = self.diffusion_model(x, t, context=c_crossattn[0], latent_unet_feature=feature_list)   # U-Net
         
         elif self.conditioning_key == 'cat-control':
             assert not isinstance(x, list) and isinstance(c_concat, list) and isinstance(c_crossattn, list), \
             f'Type not match: type(x) = {type(x)}, type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
             # c_concat: image, c_crossattn: encoded prompt
-            assert self.diffusion_model.in_channels == 4
-            assert len(x.shape) == 4 and x.shape[-1] == x.shape[2], f'invalid noise shape: x.shape = {x.shape}'
             try:
-
+                
                 seg_cond_latent = kwargs['seg_cond_latent']
                 pm_model = kwargs['projection']
                 adapter = kwargs['adapter']
