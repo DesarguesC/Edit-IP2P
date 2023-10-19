@@ -207,6 +207,18 @@ def parsr_args():
         default=False,
         help='whether to add embedded time feature into adapter'
     )
+    parser.add_argument(
+        '--init',
+        type=str2bool,
+        default=False,
+        help='whether to init latentadapter with pretrained models'
+    )
+    parser.add_argument(
+        '--ls_path',
+        type=str,
+        default='./checkpoints/ls_model.pth',
+        help='LatentSegmentAdapter model path'
+    )
     opt = parser.parse_args()
     return opt
 
@@ -244,7 +256,12 @@ def main():
     torch.backends.cudnn.benchmark = True
     
     
-    LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
+    LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 512, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
+    if opt.init:
+        state_dict = torch.load(opt.ls_path)
+        LatentSegAdapter.load_state_dict(state_dict)
+        LatentSegAdapter.train().to(device)
+    
     
     if not opt.use_single_gpu:
         print(f'adapter-{opt.local_rank}')

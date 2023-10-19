@@ -1382,17 +1382,15 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t, context=cc)
         
         elif self.conditioning_key == 'add-control':
-            
+            # print(f'step into add-control: t.device = {t.device}')
             assert self.diffusion_model.in_channels == 4
             # x: bsize * 4 * 512 * 512
             assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
                     f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
-            use_time_emb = kwargs['time_emb']
             seg_cond_latent = kwargs['seg_cond_latent']
             pm_model = kwargs['projection']
             adapter = kwargs['adapter']
-            assert seg_cond_latent.shape == x.shape, f'seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
-                
+            use_time_emb = kwargs['time_emb']
             
             proj_cond = pm_model(seg_cond_latent).to(self.device)
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
