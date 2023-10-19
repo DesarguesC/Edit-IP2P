@@ -12,6 +12,7 @@ src/*
 Inputs
 Outputs
 
+proxy
 
 *.DS_Store
 .idea
