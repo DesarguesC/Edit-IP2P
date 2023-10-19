@@ -87,7 +87,7 @@ class TimeEmbed(nn.Module):
         )
 
     def forward(self, t):
-        t =  self.time_embedding(t)
+        return self.time_embedding(t)
         
         
         
