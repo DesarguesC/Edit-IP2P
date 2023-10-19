@@ -102,7 +102,7 @@ class Adapter(nn.Module):
         self.unshuffle = nn.PixelUnshuffle(unshuffle)
         self.cin = cin
         self.repeat_only = repeat_only
-        self.time_emb = TimeEmbed(channels=self.cin // (unshuffle ** 2))
+        self.time_emb = TimeEmbed(channels=self.cin)
         self.channels = channels
         self.nums_rb = nums_rb
         self.body = []
