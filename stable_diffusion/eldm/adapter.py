@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from collections import OrderedDict
+from einops import (repeat, rearrange)
 from stable_diffusion.ldm.modules.diffusionmodules.util import (conv_nd, avg_pool_nd, timestep_embedding)
 
 
@@ -68,17 +69,26 @@ class ResnetBlock(nn.Module):
         else:
             return h + x
 
+@torch.no_grad()   # ???    
+def fix_shape(t, x):
+    assert len(t.shape)+2 == len(x.shape), f't.shape = {t.shape}, x.shape = {x.shape}'
+    t = repeat(rearrange(t, 'b c -> b c 1'), 'b c 1 -> b c h', h=x.shape[2])
+    t = repeat(rearrange(t, 'b c h -> b c h 1'), 'b c h 1 -> b c h w', h=x.shape[-1])
+    return t
         
+    
 class TimeEmbed(nn.Module):
     def __init__(self, channels=4):
+        super(TimeEmbed, self).__init__()
         self.time_embedding = nn.Sequential(
             nn.Linear(channels, 2 * channels),
-            nn.Silu(),
+            nn.SiLU(),
             nn.Linear(2 * channels, channels)
         )
 
     def forward(self, t):
-        return self.time_embedding(t)
+        t =  self.time_embedding(t)
+        
         
         
 def view_shape(u: list):
@@ -92,7 +102,7 @@ class Adapter(nn.Module):
         self.unshuffle = nn.PixelUnshuffle(unshuffle)
         self.cin = cin
         self.repeat_only = repeat_only
-        self.time_emb = TimeEmbed(channels=self.cin // (unshuffle ** 2), repeat_only=repeat_only)
+        self.time_emb = TimeEmbed(channels=self.cin // (unshuffle ** 2))
         self.channels = channels
         self.nums_rb = nums_rb
         self.body = []
@@ -109,7 +119,8 @@ class Adapter(nn.Module):
         
 
     def forward(self, x, t=None):
-        t_emb = timestep_embedding(timestep_embedding(t, self.cin, repeat_only=self.repeat_only)) if t != None else None
+        t_emb = timestep_embedding(t, dim=self.cin, repeat_only=self.repeat_only) if t != None else None
+        # batch * cin
         print(f'embedded time shape: {t_emb.shape}')
         # unshuffle
         x = self.unshuffle(x)
@@ -121,7 +132,7 @@ class Adapter(nn.Module):
             for j in range(self.nums_rb):
                 idx = i * self.nums_rb + j
                 x = self.body[idx](x)
-                t0 = self.time_emb(t_emb) if t != None else None
+                t0 = fix_shape(self.time_emb(t_emb)) if t != None else None
             features.append(x)
             t_.append(t0)
         print('features')

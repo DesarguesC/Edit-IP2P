@@ -1387,15 +1387,14 @@ class DiffusionWrapper(pl.LightningModule):
             # x: bsize * 4 * 512 * 512
             assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
                     f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
-            try:
-                use_time_emb = kwargs['time_emb']
-                seg_cond_latent = kwargs['seg_cond_latent']
-                pm_model = kwargs['projection']
-                adapter = kwargs['adapter']
-                assert seg_cond_latent.shape == x.shape, f'inequal shape: seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
-            assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-            proj_cond = pm_model(seg_cond_latent).to(self.device)
+            use_time_emb = kwargs['time_emb']
+            seg_cond_latent = kwargs['seg_cond_latent']
+            pm_model = kwargs['projection']
+            adapter = kwargs['adapter']
+            assert seg_cond_latent.shape == x.shape, f'seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
+                
             
+            proj_cond = pm_model(seg_cond_latent).to(self.device)
             ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
             print(f'ad_input.shape = {ad_input.shape}')
             feature_list = adapter(ad_input, t = t if use_time_emb else None)   # no time embedding

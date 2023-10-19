@@ -117,7 +117,7 @@ class Ip2pDatasets(ProjectionTo):
 
             for _, shard in enumerate(base_path_tqdm):
                 # shard = 'shard-xx'
-                if 'shard' not in shard or shard.endswith('.ipynb_checkpoints'): continue
+                if 'shard' not in shard or '.' in shard: continue
                 now_path = osp.join(base_path, shard)
                 # shard = '........./shard-xx'
                 # print(f'now_path = {now_path}')
