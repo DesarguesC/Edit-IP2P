@@ -4,6 +4,7 @@ tmp/*
 # Datasets/vit-gpt2-image-captioning/*
 #/Datasets/Data/*
 models/*
+exp-segControlNet/*
 nlpconnect/vit-gpt2-image-captioning/
 experiments/*
 checkpoints/*
