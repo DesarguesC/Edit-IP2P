@@ -90,7 +90,7 @@ class TimeEmbed(nn.Module):
         )
 
     def forward(self, t):
-        print(f'in TimeEmbed forward (before): t.device = {t.device}, t.shape = {t.shape}')
+        # print(f'in TimeEmbed forward (before): t.device = {t.device}, t.shape = {t.shape}')
         return self.time_embedding(t) + ( 0. if not self.res else self.mid_channels * 1. * t )
     
         
@@ -128,8 +128,7 @@ class Adapter(nn.Module):
 
     def forward(self, x, t=None):
         # unshuffle
-        if t != None:
-            print(f'in forward: t.device = {t.device}, x.device = {x.device}')
+        
         x = self.unshuffle(x)
         # extract features
         features = []
@@ -143,17 +142,13 @@ class Adapter(nn.Module):
             for j in range(self.nums_rb):
                 idx = i * self.nums_rb + j
                 x = self.body[idx](x)
-                print(f'before: t_emb.device = {t_emb.device}')
-                t_emb = self.time_embeddings[i](t_emb.to('cpu'))       # probably due to the selection appeared in forward step
-                print(f'after: t_emb.device = {t_emb.device}')
-                t_emb = fix_shape(t_emb, x) if t != None else None
+            # print(f'before: t_emb.device = {t_emb.device}')
+            t_emb = self.time_embeddings[i](t_emb.to('cpu')).to(DEVICE)
+            # probably due to the selection appeared in forward step
+            # print(f'after (no fix, input of next emb): t_emb.shape = {t_emb.shape}')
+            t_emb_ = fix_shape(t_emb, x) if t != None else None
             features.append(x)
-            t_.append(t_emb)
-        # print('features')
-        # view_shape(features)
-        # print('t_')
-        # view_shape(t_)
-        assert len(t_) == len(features), f'length not match: len(t_) = {len(t_)}, len(features) = {len(features)}'
+            t_.append(t_emb_)
         return features, t_
             
             
