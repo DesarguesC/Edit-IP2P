@@ -256,7 +256,7 @@ def main():
     torch.backends.cudnn.benchmark = True
     
     
-    LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 512, 1024], nums_rb=2, ksize=1, sk=True, \
+    LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, \
                                use_conv=False, use_time=opt.adapter_time_emb).train().to(opt.device)
     
     

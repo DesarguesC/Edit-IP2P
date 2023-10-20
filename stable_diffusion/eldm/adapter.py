@@ -136,7 +136,6 @@ class Adapter(nn.Module):
         x = self.conv_in(x)
         t_emb =  self.first_time_emb(timestep_embedding(t, dim=self.cin, repeat_only=self.repeat_only))\
                                                                                         if t != None else None
-        print(f't_emb.device = {t_emb.device}')
         # batch * cin
         for i in range(len(self.channels)):
             for j in range(self.nums_rb):
