@@ -257,11 +257,10 @@ def main():
     
     
     LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 512, 1024], nums_rb=2, ksize=1, sk=True, \
-                               use_conv=False, use_time=opt.adapter_time_emb).to(opt.device, non_blocking=True)
+                               use_conv=False, use_time=opt.adapter_time_emb).train().to(opt.device)
     if opt.init:
-        state_dict = torch.load(opt.ls_path)
-        LatentSegAdapter.load_state_dict(state_dict)
-        LatentSegAdapter.train().to(device)
+        LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
+        LatentSegAdapter.train()
     
     
     if not opt.use_single_gpu:
@@ -280,8 +279,6 @@ def main():
             pm_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
         torch.backends.cudnn.benchmark = True
-    
-    LatentSegAdapter.train()
     
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
     data_params = {
