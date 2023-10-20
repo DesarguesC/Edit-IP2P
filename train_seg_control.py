@@ -258,6 +258,9 @@ def main():
     
     LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 512, 1024], nums_rb=2, ksize=1, sk=True, \
                                use_conv=False, use_time=opt.adapter_time_emb).train().to(opt.device)
+    
+    
+    
     if opt.init:
         LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
         LatentSegAdapter.train()
