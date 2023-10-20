@@ -101,13 +101,15 @@ def view_shape(u: list):
         print(i.shape)
 
 class Adapter(nn.Module):
-    def __init__(self, channels=[320, 640, 1280, 1280], nums_rb=3, cin=64, ksize=3, unshuffle=4, sk=False, use_conv=True, repeat_only=False):
+    def __init__(self, channels=[320, 640, 1280, 1280], nums_rb=3, cin=64, ksize=3, unshuffle=4, sk=False, use_conv=True, repeat_only=False, use_time=False):
         super(Adapter, self).__init__()
         self.unshuffle = nn.PixelUnshuffle(unshuffle)
         self.cin = cin
         self.repeat_only = repeat_only
-        self.first_time_emb = TimeEmbed(in_channels=self.cin, out_channels=channels[0])
-        self.time_embeddings = [TimeEmbed(in_channels=channels[i-1], out_channels=channels[i]) for i in range(1, len(channels))]
+        self.use_time = use_time
+        if use_time:
+            self.first_time_emb = TimeEmbed(in_channels=self.cin, out_channels=channels[0])
+            self.time_embeddings = [TimeEmbed(in_channels=channels[i-1], out_channels=channels[i]) for i in range(1, len(channels))]
         self.time_embeddings.append(TimeEmbed(in_channels=channels[-1], out_channels=channels[-1], res=True))
         self.channels = channels
         self.nums_rb = nums_rb
@@ -142,7 +144,7 @@ class Adapter(nn.Module):
                 x = self.body[idx](x).to(DEVICE)
                 t_emb = fix_shape(self.time_embeddings[i](t_emb.to(DEVICE)).to(DEVICE), x).to(DEVICE) if t != None else None
             features.append(x)
-            t_.append(t0)
+            t_.append(t_emb)
         print('features')
         view_shape(features)
         print('t_')

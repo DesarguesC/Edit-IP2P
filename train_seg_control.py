@@ -256,7 +256,8 @@ def main():
     torch.backends.cudnn.benchmark = True
     
     
-    LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 512, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False).to(opt.device, non_blocking=True)
+    LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 512, 1024], nums_rb=2, ksize=1, sk=True, \
+                               use_conv=False, use_time=opt.adapter_time_emb).to(opt.device, non_blocking=True)
     if opt.init:
         state_dict = torch.load(opt.ls_path)
         LatentSegAdapter.load_state_dict(state_dict)
