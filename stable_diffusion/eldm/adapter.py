@@ -3,7 +3,7 @@ import torch.nn as nn
 from collections import OrderedDict
 from einops import (repeat, rearrange)
 from stable_diffusion.ldm.modules.diffusionmodules.util import (conv_nd, avg_pool_nd, timestep_embedding)
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class Downsample(nn.Module):
     """
@@ -85,14 +85,14 @@ class TimeEmbed(nn.Module):
         self.time_embedding = nn.Sequential(
             nn.Linear(in_channels, self.mid_channels),
             nn.SiLU(),
-            nn.Linear(self.mid_channels, out_channels)
+            nn.Linear(self.mid_channels, out_channels),
+            QuickGELU()
         )
 
     def forward(self, t):
-        if self.res:
-            return self.time_embedding(t) + self.mid_channels * 1. * t
-        else:
-            return self.time_embedding(t)
+        print(f'in TimeEmbed forward (before): t.device = {t.device}, t.shape = {t.shape}')
+        return self.time_embedding(t) + ( 0. if not self.res else self.mid_channels * 1. * t )
+    
         
         
 def view_shape(u: list):
@@ -109,7 +109,7 @@ class Adapter(nn.Module):
         self.use_time = use_time
         if use_time:
             self.first_time_emb = TimeEmbed(in_channels=self.cin, out_channels=channels[0])
-            self.time_embeddings = [TimeEmbed(in_channels=channels[i-1], out_channels=channels[i]) for i in range(1, len(channels))]
+            self.time_embeddings = [TimeEmbed(in_channels=channels[i-1], out_channels=channels[i], res=False) for i in range(1, len(channels))]
         self.time_embeddings.append(TimeEmbed(in_channels=channels[-1], out_channels=channels[-1], res=True))
         self.channels = channels
         self.nums_rb = nums_rb
@@ -127,28 +127,32 @@ class Adapter(nn.Module):
         
 
     def forward(self, x, t=None):
-        
-        
         # unshuffle
+        if t != None:
+            print(f'in forward: t.device = {t.device}, x.device = {x.device}')
         x = self.unshuffle(x)
         # extract features
         features = []
         t_ = []
         x = self.conv_in(x)
-        t_emb = timestep_embedding(t, dim=self.cin, repeat_only=self.repeat_only) if t != None else None
+        t_emb =  self.first_time_emb(timestep_embedding(t, dim=self.cin, repeat_only=self.repeat_only))\
+                                                                                        if t != None else None
+        print(f't_emb.device = {t_emb.device}')
         # batch * cin
-        print(f't_emb in shape: {t_emb.shape}')
         for i in range(len(self.channels)):
             for j in range(self.nums_rb):
                 idx = i * self.nums_rb + j
-                x = self.body[idx](x).to(DEVICE)
-                t_emb = fix_shape(self.time_embeddings[i](t_emb.to(DEVICE)).to(DEVICE), x).to(DEVICE) if t != None else None
+                x = self.body[idx](x)
+                print(f'before: t_emb.device = {t_emb.device}')
+                t_emb = self.time_embeddings[i](t_emb.to('cpu'))       # probably due to the selection appeared in forward step
+                print(f'after: t_emb.device = {t_emb.device}')
+                t_emb = fix_shape(t_emb, x) if t != None else None
             features.append(x)
             t_.append(t_emb)
-        print('features')
-        view_shape(features)
-        print('t_')
-        view_shape(t_)
+        # print('features')
+        # view_shape(features)
+        # print('t_')
+        # view_shape(t_)
         assert len(t_) == len(features), f'length not match: len(t_) = {len(t_)}, len(features) = {len(features)}'
         return features, t_
             

@@ -1382,7 +1382,7 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t, context=cc)
         
         elif self.conditioning_key == 'add-control':
-            # print(f'step into add-control: t.device = {t.device}')
+            
             assert self.diffusion_model.in_channels == 4
             # x: bsize * 4 * 512 * 512
             assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
@@ -1392,9 +1392,10 @@ class DiffusionWrapper(pl.LightningModule):
             adapter = kwargs['adapter']
             use_time_emb = kwargs['time_emb']
             
+            print(f'step into add-control: t.device = {t.device}')
             proj_cond = pm_model(seg_cond_latent).to(self.device)
-            ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1)
-            print(f'ad_input.shape = {ad_input.shape}')
+            ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1).to(self.device)
+            print(f'ad_input.shape = {ad_input.shape}, ad_input.device = {ad_input.device}')
             feature_list = adapter(ad_input, t = t if use_time_emb else None)   # no time embedding
             out = self.diffusion_model(x, t, context=c_crossattn[0], latent_unet_feature=feature_list)   # U-Net
         
