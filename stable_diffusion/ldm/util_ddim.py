@@ -318,6 +318,24 @@ def load_target_model(config, sd_ckpt, vae_ckpt, sam_ckpt, sam_type, device):
 
     return model, sam, config
 
+def load_img(Path: str = None, Train: bool = True, max_resolution: int = 512 * 512, device='cuda') -> np.array:
+    assert Path != None, f'none path when loading image'
+    if Path is None:
+        assert os.path.isfile(Path)
+        hhh = (int)(math.sqrt(max_resolution))
+        image = torch.randn((1, 3, hhh, hhh), device=device) * 255.
+        image = image.numpy()
+        return image
+    else:
+        image = Image.open(Path).convert("RGB")
+        if Train:
+            w = h = (int)(math.sqrt(max_resolution))
+        else:
+            w, h = image.size
+            h, w = get_resize_shape((h, w), max_resolution=max_resolution, resize_short_edge=None)
+        image = cv2.resize(np.asarray(image, dtype=np.float32), (w, h), interpolation=cv2.INTER_LANCZOS4)
+        return image
+
 
 
 def load_inference_train(opt, device):

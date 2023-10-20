@@ -159,13 +159,5 @@ class Ip2pDatasets(ProjectionTo):
                                             self.load_img(cout_img_path, Train=True, max_resolution=self.max_resolution)
         # (np.ndarray, np.ndarray)
 
-        # seg_cond = self.MapsTo(IMG=cin_img, Type='R^3=seg')
-        # edit = self.sd_model.get_learned_conditioning(edit_prompt)
-        # seg_cond_latent = self.MapsTo(IMG=seg_cond, Type='seg=seg-latent').squeeze()
-        # map R3 seg condition into latent space
-        
-        # cin_img = self.MapsTo(IMG=cin_img, Type='R^3=latent').squeeze()
-        # cout_img = self.MapsTo(IMG=cout_img, Type='R^3=latent').squeeze()
-
         # return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt, 'seg_cond': seg_cond, 'seg_cond_latent': seg_cond_latent}
         return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt}

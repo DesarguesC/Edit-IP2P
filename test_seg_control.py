@@ -1,22 +1,16 @@
 import torch, cv2, os, sys
 import os.path as osp
 import numpy as np
-from tqdm import tqdm
-from torch.utils.data import DataLoader
-from torch.nn.functional import kl_div
 import argparse
-import torch.multiprocessing as mp
-import torch.distributed as dist
 
 sys.path.append('../')
 sys.path.append('./stable_diffusion')
 
-from stable_diffusion.ldm.util_ddim import (load_inference_train, reduce_tensor, img2latent, img2seg, seg2latent, sl2latent)
+from stable_diffusion.ldm.util_ddim import (load_inference_train, reduce_tensor, img2latent, img2seg, seg2latent, sl2latent, load_img)
 from stable_diffusion.ldm.inference_base import str2bool
 from stable_diffusion.eldm.adapter import Adapter
 from basicsr.utils import (get_root_logger, get_time_str,
                            scandir, tensor2img)
-import logging
 from sam.dist_util import init_dist, master_only, get_bare_model, get_dist_info
 from stable_diffusion.ldm.data.ip2p import Ip2pDatasets
 from sam.seg2latent import ProjectionModel as PM
@@ -51,25 +45,11 @@ def mkdir(path: str, rank) -> str:
 def parsr_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--bsize",
-        type=int,
-        default=32,
-    )
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        default=10000,
-    )
-    parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=30,
-    )
-    parser.add_argument(
         "--plms",
         action='store_true',
         help="use plms sampling",
     )
+    # we use DDIM
     parser.add_argument(
         "--sd_ckpt",
         type=str,
@@ -107,10 +87,10 @@ def parsr_args():
         help="path to config which constructs model",
     )
     parser.add_argument(
-        "--name",
+        "--input_image",
         type=str,
-        default="train_seg_control",
-        help="experiment name",
+        default='./example/1.jpg',
+        help='path to an input image'
     )
     parser.add_argument(
         "--max_resolution",
@@ -121,7 +101,7 @@ def parsr_args():
     parser.add_argument(
         "--H",
         type=int,
-        default=512 * 2,            # use cat-control, cat at channels: 2 * 512
+        default=512 * 2,            # use cat-control, cat at channels -> 2 * 512
         help="image height, in pixel space",
     )
     parser.add_argument(
@@ -152,7 +132,7 @@ def parsr_args():
         "--n_samples",
         type=int,
         default=1,
-        help="how many samples to produce for each given prompt. A.k.a. batch size",
+        help="how many samples to produce for each given prompt batch size",
     )
     parser.add_argument(
         "--txt_scale",
@@ -183,6 +163,7 @@ def main():
     sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
     
     LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=opt.adapter_time_emb)
+    # no time embedding weights have been trained
     LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
     LatentSegAdapter.eval().to(opt.device)
     mask_generator = SamAutomaticMaskGenerator(sam_model).generate
@@ -192,7 +173,7 @@ def main():
         'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module,
         'time_emb': opt.adapter_time_emb
     }
-
+    cin = load_img(opt.input_image)
 
 
 
