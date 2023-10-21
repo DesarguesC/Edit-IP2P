@@ -5,6 +5,7 @@ from sam.seg2latent import ProjectionTo
 from jieba import re
 from tqdm import tqdm
 
+
 def get_current_File(folder_path: str = None, base_path: str = None) -> list:
 
     """
@@ -149,9 +150,18 @@ class Ip2pDatasets(ProjectionTo):
 
     @torch.no_grad()
     def __getitem__(self, item):
-        item = self.total_data_path_list[item]
-        cin_img_path, cout_img_path, edit_prompt = item['0'], item['1'], item['edit-prompt']
-
+        item_ = self.total_data_path_list[item]
+        i = 0
+        while(i==0):
+            try:
+                cin_img_path, cout_img_path, edit_prompt = item_['0'], item_['1'], item_['edit-prompt']
+                i = 1
+            except Exception as err:
+                print(err)
+                i = 0
+                item_ = self.total_data_path_list[(item+randint(0,1000))%len(self)]
+            
+            
         assert osp.isfile(cin_img_path) or not osp.exists(cin_img_path), f'\'0\' -> not a file or file not exists'
         assert osp.isfile(cout_img_path) or not osp.exists(cout_img_path), f'\'1\' -> not a file or file not exists'
 
