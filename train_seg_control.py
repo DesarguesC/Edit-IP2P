@@ -353,8 +353,10 @@ def main():
                     'seg_cond': seg_cond
                 }
             """
-            
-            cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
+            if current_iter >= 800:
+                cin_pic = cout_pic = data['cin']
+                edit_prompt = ''
+            else: cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
             # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # low time cost tested
 
