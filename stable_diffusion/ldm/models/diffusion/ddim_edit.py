@@ -188,11 +188,8 @@ class DDIMSampler(object):
                       prompt_guidance_scale=1., image_guidance_scale=1.,
                       unconditional_conditioning=None, img_uncond=None, **kwargs):
         b, *_, device = *x.shape, x.device
-
-        seg_cond_latent = kwargs['seg_cond_latent']
-        pm_model = kwargs['projection']
-        adapter = kwargs['adapter']
-        use_time_emb = kwargs['time_emb']
+        assert 'seg_cond_latent' in kwargs.keys() and 'projection' in kwargs.keys() and 'adapter' in kwargs.keys() \
+                    and 'time_emb' in kwargs.keys(), f'kwargs.keys = {kwargs.keys()}'
         # print(f'single x.shape={x.shape}')
         if unconditional_conditioning is None or prompt_guidance_scale == 1. and image_guidance_scale == 1.:
             e_t = self.model.apply_model(x, t, cond)
@@ -206,7 +203,7 @@ class DDIMSampler(object):
                 'c_crossattn': [img_uncond, img_cond]
             }
 
-            e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
+            e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in, **kwargs).chunk(2)
             e_t = e_t_uncond_prompt + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
         else:
             # both image conditioning and prompt conditioning
@@ -219,7 +216,7 @@ class DDIMSampler(object):
             }
             
             # concat prompt vector and latent image to constrain the generation simultaneously, implement cfg for ControlNet constrains.
-            e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(3, dim=0)   # self.model.apply_model
+            e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in, **kwargs).chunk(3, dim=0)   # self.model.apply_model
             # print(f'e_t_uncond.shape={e_t_uncond.shape}, e_t_uncond_prompt.shape={e_t_uncond_prompt.shape}, e_t.shape={e_t.shape}')
             e_t = e_t_uncond + image_guidance_scale * (e_t_uncond_prompt - e_t_uncond) + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
             if self.model.apply_model.diffusion_model.in_channels == 4:
