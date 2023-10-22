@@ -17,6 +17,7 @@ from stable_diffusion.ldm.data.ip2p import Ip2pDatasets
 from sam.seg2latent import ProjectionModel as PM
 from sam.data import DataCreator
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+from stable_diffusion.ldm.inference_base import get_base_argument_parser as gbap
 
 
 def mkdir(path: str, rank) -> str:
@@ -44,7 +45,7 @@ def mkdir(path: str, rank) -> str:
 
 
 def parsr_args():
-    parser = argparse.ArgumentParser()
+    parser = gbap()
     parser.add_argument(
         "--plms",
         action='store_true',
@@ -82,12 +83,6 @@ def parsr_args():
         help='LatentSegmentAdapter model path'
     )
     parser.add_argument(
-        "--config",
-        type=str,
-        default="./configs/ip2p-ddim.yaml",
-        help="path to config which constructs model",
-    )
-    parser.add_argument(
         "--input_image",
         type=str,
         default='./example/1.jpg',
@@ -98,42 +93,6 @@ def parsr_args():
         type=str,
         default='',
         help='edit prompt / guidance / instructions'
-    )
-    parser.add_argument(
-        "--H",
-        type=int,
-        default=512 * 2,            # use cat-control, cat at channels -> 2 * 512
-        help="image height, in pixel space",
-    )
-    parser.add_argument(
-        "--W",
-        type=int,
-        default=512,
-        help="image width, in pixel space",
-    )
-    parser.add_argument(
-        "--C",
-        type=int,
-        default=4,
-        help="latent channels",
-    )
-    parser.add_argument(
-        "--f",
-        type=int,
-        default=8,
-        help="downsampling factor",
-    )
-    parser.add_argument(
-        "--sample_steps",
-        type=int,
-        default=50,
-        help="number of ddim sampling steps",
-    )
-    parser.add_argument(
-        "--n_samples",
-        type=int,
-        default=1,
-        help="how many samples to produce for each given prompt batch size",
     )
     parser.add_argument(
         "--txt_scale",
@@ -175,11 +134,11 @@ def main():
     LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
     LatentSegAdapter.eval().to(opt.device)
     mask_generator = SamAutomaticMaskGenerator(sam_model).generate
-    sampler = DDIMSampler()
+    sampler = DDIMSampler(sd_model)
     Cin_Models = {
         'opt': opt,
         'sampler': sampler,
-        'sd': sd_model,
+        'sd_model': sd_model,
         'sam': mask_generator,
         'pm': pm_model,
         'adapter': LatentSegAdapter,
@@ -189,7 +148,7 @@ def main():
 
 
     cout = diffusion_inference(**Cin_Models)
-
+    print(cout)
 
 
     return

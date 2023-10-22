@@ -161,7 +161,7 @@ class DDIMSampler(object):
             
             # img: history in diffusion process
             # print(f'Before q_sasmple_ddim img shape: {img.shape}')
-            outs = self.p_sample_ddim(img, ts, index=index, use_original_steps=ddim_use_original_steps,
+            outs = self.p_sample_ddim(x=img, t=ts, index=index, use_original_steps=ddim_use_original_steps,
                                       quantize_denoised=quantize_denoised, temperature=temperature,
                                       noise_dropout=noise_dropout, score_corrector=score_corrector,
                                       corrector_kwargs=corrector_kwargs,
@@ -183,14 +183,21 @@ class DDIMSampler(object):
         return img, intermediates
 
     @torch.no_grad()
-    def p_sample_ddim(self, x, img_cond, cond, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,
+    def p_sample_ddim(self, x, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       prompt_guidance_scale=1., image_guidance_scale=1.,
-                      unconditional_conditioning=None, img_uncond=None, **kwargs):
+                      cond=None, unconditional_conditioning=None, 
+                      img_cond=None, img_uncond=None, **kwargs):
         b, *_, device = *x.shape, x.device
         assert 'seg_cond_latent' in kwargs.keys() and 'projection' in kwargs.keys() and 'adapter' in kwargs.keys() \
-                    and 'time_emb' in kwargs.keys(), f'kwargs.keys = {kwargs.keys()}'
+                    and 'time_emb' in kwargs.keys() and 'seg_uncond_latent' in kwargs.keys(), f'kwargs.keys = {kwargs.keys()}'
         # print(f'single x.shape={x.shape}')
+        seg_cond_latent = kwargs['seg_cond_latent']
+        seg_uncond_latent = kwargs['seg_uncond_latent']
+        cond_pm = kwargs['cond_pm']
+        uncond_pm = kwargs['uncond_pm']
+        
+        
         if unconditional_conditioning is None or prompt_guidance_scale == 1. and image_guidance_scale == 1.:
             e_t = self.model.apply_model(x, t, cond)
         elif image_guidance_scale == 1. :
@@ -210,14 +217,15 @@ class DDIMSampler(object):
             x_in = [x] * 3
             t_in = torch.cat([t] * 3) # -> (9,6)
             
-            c_in = {
-                'c_crossattn': [unconditional_conditioning, unconditional_conditioning, cond],
-                'c_concat': [img_uncond, img_cond, img_cond]
-            }
+            c_in = [
+                [unconditional_conditioning, unconditional_conditioning, cond],   # prompt
+                [img_uncond, img_cond, img_cond],   # image latent
+                [seg_uncond_latent, seg_cond_latent, seg_cond_latent],   # seg cond => following image latent
+                [uncond_pm, cond_pm, cond_pm]    # projected seg cond => following image latent
+            ]
             
             # concat prompt vector and latent image to constrain the generation simultaneously, implement cfg for ControlNet constrains.
             e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in, **kwargs).chunk(3, dim=0)   # self.model.apply_model
-            # print(f'e_t_uncond.shape={e_t_uncond.shape}, e_t_uncond_prompt.shape={e_t_uncond_prompt.shape}, e_t.shape={e_t.shape}')
             e_t = e_t_uncond + image_guidance_scale * (e_t_uncond_prompt - e_t_uncond) + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
             if self.model.apply_model.diffusion_model.in_channels == 4:
                 e_t, _ = e_t.chunk(2,dim=2)

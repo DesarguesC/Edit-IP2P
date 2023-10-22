@@ -32,7 +32,8 @@ from ldm.models.diffusion.ddim import DDIMSampler
 __conditioning_keys__ = {'concat': 'c_concat',
                          'crossattn': 'c_crossattn',
                          'adm': 'y'}
-
+def get_list(x: any) -> list:
+    return x if isinstance(x, list) else [x]
 
 def disabled_train(self, mode=True):
     """Overwrite model.train with this function to make sure train/eval mode
@@ -906,33 +907,34 @@ class LatentDiffusion(DDPM):
 
     def apply_model(self, x_noisy, t, cond, return_ids=False, **kwargs):
         # cond: prompt2tensor
-        if isinstance(cond, dict):
-            # hybrid case, cond is exptected to be a dict
-            pass
+        # assert not isinstance(cond, dict)
+        
+        if not isinstance(cond, list):
+            cond = [cond]
+        elif len(cond) == 1:
+            key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
+            cond = {key: cond}
+            assert kwargs == None, 'shouldn\'t have **kwargs'
         else:
-            if not isinstance(cond, list):
-                cond = [cond]
-            elif len(cond) == 1:
-                key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
-                cond = {key: cond}
-                assert kwargs == None, 'shouldn\'t have **kwargs'
-            else:
-                # cond = [prompt_cond, init_latent, seg_cond, seg_cond_latent]
-                # TODO: whether to give proj_cond directly ?
-                assert len(cond) == 4, f'cond wrong with length = {len(cond)}'
+            assert len(cond) == 4 or isinstance(cond[1], list), f'cond = {cond}'
+            # cond = [prompt_cond, init_latent, seg_cond, seg_cond_latent]
+            # TODO: whether to give proj_cond directly ?
+            if not isinstance(cond[1], list):
                 assert cond[1].shape == cond[3].shape, f'init_latent shape = {cond[1].shape}, seg_cond(latent) shape ' \
-                                                       f'= {cond[3].shape}, that leads to CAT error: '
-                # c_crossattn => prompt
-                cond_dict = {'c_crossattn': [cond[0]], 'c_concat': [cond[1]]}
+                                                   f'= {cond[3].shape}, that leads to CAT error: '
             
-            # assert 0, f'cond.keys() = {cond.keys()}'
-            # TODO: (projection_model, LatentSegAdapter)  =>  in **kwargs
-            kwargs['seg_cond'] = cond[2]
-            kwargs['seg_cond_latent'] = cond[3]
-            cond = cond_dict
-            assert not isinstance(x_noisy, list), f'type(x_noisy): {type(x_noisy)}'
-            x_recon = self.model(x_noisy, t, **cond, **kwargs)
-            #  cond:  {c_concat: list = None, c_crossattn: list = None}
+            # c_crossattn => prompt
+            cond_dict = {'c_crossattn': get_list(cond[0]), 'c_concat': get_list(cond[1]) }
+        
+
+        # assert 0, f'cond.keys() = {cond.keys()}'
+        # TODO: (projection_model, LatentSegAdapter)  =>  in **kwargs
+        kwargs['seg_cond'] = torch.cat(get_list(cond[2]), dim=0)   # list
+        kwargs['seg_cond_latent'] = torch.cat(get_list(cond[3]), dim=0)   # list
+        cond = cond_dict
+        assert not isinstance(x_noisy, list), f'type(x_noisy): {type(x_noisy)}'
+        x_recon = self.model(x_noisy, t, **cond, **kwargs)
+        #  cond:  {c_concat: list = None, c_crossattn: list = None}
 
         if isinstance(x_recon, tuple) and not return_ids:
             return x_recon[0]
