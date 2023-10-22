@@ -354,23 +354,24 @@ def main():
                     'seg_cond': seg_cond
                 }
             """
-            if (current_iter+1) % 20 == 0:
-                cin_pic = cout_pic = data['cin']
-                edit_prompt = ''
-                u = randint(0,200)
-                if u < 5:
-                    cin_pic = cout_pic = torch.randn_like(torch.from_numpy(cin_pic), dtype=torch.float32, device=opt.device, requires_grad=True).numpy()
+            cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
             
-            else: cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
+            u = randint(0,100)
+            if u < 5:
+                cout_pic = cin_pic
+                edit_prompt = ["do not modify"] * cin_pic.shape[0]
+            elif u < 10:
+                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape[1:-1], dtype=np.uint8)
+            elif u < 15:
+                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape[1:-1], dtype=np.uint8)
+                edit_prompt = ["do not modify"] * cin_pic.shape[0]            
+            
             # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # low time cost tested
-            
-            if (current_iter+1) % 20 == 1:
-                cin_pic = cout_pic = torch.randn_like(torch.from_numpy(cin_pic), dtype=torch.float32, device=opt.device, requires_grad=True).numpy()
-
+            # print(f'{current_iter} => cin_pic.shape = {cin_pic.shape}, edit-prompt = {edit_prompt}')
             with torch.no_grad():
                 # cin_pic.shape = [8, 512, 512, 3]
-                # print(f'cin_pic.shape = {cin_pic.shape}')
+                
                 seg_cond = img2seg(cin_pic, mask_generator, opt.device)
                 c = sd_bare.get_learned_conditioning(edit_prompt)
                 z_0 = img2latent(cin_pic, sd_bare, opt.device)
@@ -396,7 +397,7 @@ def main():
             """
             # *args: (c, z_0, seg_cond)
             # **kwargs: Models
-
+            
             l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond, seg_cond_latent], **Models)
             l_pixel.backward()
             optimizer.step()
