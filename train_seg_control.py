@@ -353,7 +353,7 @@ def main():
                     'seg_cond': seg_cond
                 }
             """
-            if current_iter >= 800:
+            if (current_iter+1) % 20 == 0:
                 cin_pic = cout_pic = data['cin']
                 edit_prompt = ''
             else: cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']

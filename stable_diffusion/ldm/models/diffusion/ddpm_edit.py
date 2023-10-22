@@ -1383,10 +1383,10 @@ class DiffusionWrapper(pl.LightningModule):
         
         elif self.conditioning_key == 'add-control':
             
-            assert self.diffusion_model.in_channels == 4
+            # assert self.diffusion_model.in_channels == 4
             # x: bsize * 4 * 512 * 512
-            assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
-                    f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
+            # assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
+            #         f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
             seg_cond_latent = kwargs['seg_cond_latent']
             pm_model = kwargs['projection']
             adapter = kwargs['adapter']
