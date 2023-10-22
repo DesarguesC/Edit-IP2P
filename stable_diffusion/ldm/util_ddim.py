@@ -262,12 +262,7 @@ def resize_numpy_image(image, max_resolution=512 * 512, resize_short_edge=None, 
     h = int(np.round(h * k / 64)) * 64
     w = int(np.round(w * k / 64)) * 64
     
-    if opt is not None:
-        try:
-            h *= opt.fac
-            w *= opt.fac
-        except:
-            raise NotImplementedError
+
     
     image = cv2.resize(image, (w, h), interpolation=cv2.INTER_LANCZOS4)
     return image

@@ -1,13 +1,18 @@
 import argparse
-import torch
+import torch, cv2
+import numpy as np
 from omegaconf import OmegaConf
 from einops import repeat
 
 from stable_diffusion.ldm.models.diffusion.ddim import DDIMSampler
 from stable_diffusion.ldm.models.diffusion.plms import PLMSSampler
-# from ldm.modules.encoders.adapter import Adapter, StyleAdapter, Adapter_light
-# from ldm.modules.extra_condition.api import ExtraCondition
-from stable_diffusion.ldm.util_ddim import fix_cond_shapes, load_model_from_config, read_state_dict, get_resize_shape
+
+from stable_diffusion.ldm.util_ddim import (
+    fix_cond_shapes,DEFAULT_NEGATIVE_PROMPT,
+    load_model_from_config,
+    resize_numpy_image,
+    img2latent, img2seg, seg2latent, sl2latent
+)
 # import mmpose
 
 def str2bool(v):
@@ -42,12 +47,7 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default=1,
         help='whether to use default negative prompt',
     )
-    parser.add_argument(
-        '--cond_path',
-        type=str,
-        default='./models/test.png',
-        help='condition image path / inference',
-    )
+
 
     parser.add_argument(
         '--cond_inp_type',
@@ -168,43 +168,69 @@ def get_sd_models(opt):
 
 
 
-def diffusion_inference(opt, model, sampler, adapter_features=None, append_to_context=None, **extra_args):
-    # get text embedding
-    # c = model.get_learned_conditioning([opt.edit_prompt])
-    # if opt.scale != 1.0:
-    #     uc = model.get_learned_conditioning([opt.neg_prompt])
-    # else:
-    #     uc = None
+def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit):
+    # sampler: DDIMSampler
+    device = opt.device
+    cin_img = cv2.imread(img_path)
+    numpy_cin = resize_numpy_image(cin_img, max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge)
+    cin_latent = img2latent(numpy_cin, sd_model, device)   #   => to init inference x_T
+    cin_uncond = img2latent(np.random.randint(low=0, high=256, size=cin_img.size, dtype=np.uint8))
+    # consider whether to init diffusion x_T with input image
+    cin_seg = img2seg(cin_img, sam, device)
+    cin_uncond_seg = img2seg(cin_uncond, sam, device)
+    print(f'cin_seg,shape = {cin_seg.shape}')
+    cin_seg_latent = seg2latent(cin_seg, sd_model, device)
+    print(f'cin_seg_latent.shape = {cin_seg_latent.shape}')
+    # seg_latent = seg2latent(cin_seg_latent, pm, device)
+    # print(f'seg_latent.shape = {seg_latent.shape}')
+    x_T_init = cin_latent
+    prompts = {
+        'cond': sd_model.get_learned_conditioning(["do not modify"]),
+        'uncond': sd_model.get_learned_conditioning([edit])
+    }
+    images = {
+        'cond': sd_model.get_first_stage_encoding(sd_model.encode_first_stage(cin_seg_latent).mode()),
+        'uncond': sd_model.get_first_stage_encoding(sd_model.encode_first_stage(cin_uncond_seg))
+    }
+
     try:
-        c, uc = fix_cond_shapes(model, extra_args['cond']['c_crossattn'], extra_args['uncond']['c_crossattn'])
+        c, uc = fix_cond_shapes(sd_model, prompts['cond'], prompts['uncond'])
     except Exception as err:
         print(err)
-        print(extra_args.keys())
         raise NotImplementedError('Possibly caused by keys not in extra_args')
     
     c = repeat(c, '1 ... -> b ...', b=opt.n_samples)
     uc = repeat(uc, '1 ... -> b ...', b=opt.n_samples)
+    # prompts['cond'], prompts['uncond'] = c, uc
 
-    shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
+    kwargs = {
+        'seg_cond_latent': cin_seg_latent,
+        'projection': pm,
+        'adapter': adapter,
+        'use_time_emb': opt.adpater_time_emb
+    }
+
+    _, opt.C, opt.H, opt.W = cin_latent.shpae
+
+    shape = [opt.C, opt.H , opt.W]
 
     samples_latents, _ = sampler.sample(
         S=opt.steps,
-        conditioning=c,
         batch_size=opt.n_samples,
         shape=shape,
         verbose=False,
+        conditioning=c,
         unconditional_conditioning=uc,
-        x_T=None,
-        img_cond=extra_args['cond']['c_concat'],
-        img_uncond=extra_args['uncond']['c_concat'],
-        prompt_guidance_scale=extra_args['text_cfg_scale'],
-        image_guidance_scale=extra_args['image_cfg_scale'],
-        features_adapter=adapter_features,
-        append_to_context=append_to_context,
+        x_T=cin_latent,
+        img_cond=images['cond'],
+        img_uncond=images['uncond'],
+        prompt_guidance_scale=opt.txt_sacale,
+        image_guidance_scale=opt.img_scale,
         cond_tau=opt.cond_tau,
+        **kwargs
     )
 
-    x_samples = model.decode_first_stage(samples_latents)
+    x_samples = sd_model.decode_first_stage(samples_latents)
     x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
 
     return x_samples

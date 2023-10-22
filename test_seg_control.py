@@ -7,7 +7,8 @@ sys.path.append('../')
 sys.path.append('./stable_diffusion')
 
 from stable_diffusion.ldm.util_ddim import (load_inference_train, reduce_tensor, img2latent, img2seg, seg2latent, sl2latent, load_img)
-from stable_diffusion.ldm.inference_base import str2bool
+from stable_diffusion.ldm.models.diffusion.ddim_edit import DDIMSampler
+from stable_diffusion.ldm.inference_base import (str2bool, diffusion_inference)
 from stable_diffusion.eldm.adapter import Adapter
 from basicsr.utils import (get_root_logger, get_time_str,
                            scandir, tensor2img)
@@ -93,10 +94,10 @@ def parsr_args():
         help='path to an input image'
     )
     parser.add_argument(
-        "--max_resolution",
-        type=int,
-        default=512 * 512,            # use cat-control, cat at channels: 2 * 512
-        help="image height, in pixel space",
+        '--edit',
+        type=str,
+        default='',
+        help='edit prompt / guidance / instructions'
     )
     parser.add_argument(
         "--H",
@@ -162,19 +163,32 @@ def main():
         
     sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
     
-    LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=opt.adapter_time_emb)
+    LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=False)
+    opt.adapter_time_emb = False
+
     # no time embedding weights have been trained
+
+    # LatentSegAdapter = Adapter(cin=8 * 16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False,
+    #                            use_time=True).to(opt.device)
+    # opt.adapter_time_emb = True
+
     LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
     LatentSegAdapter.eval().to(opt.device)
     mask_generator = SamAutomaticMaskGenerator(sam_model).generate
-    
-    Models = {
-        'projection': pm_model if opt.use_single_gpu else pm_model.module,
-        'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module,
-        'time_emb': opt.adapter_time_emb
+    sampler = DDIMSampler()
+    Cin_Models = {
+        'opt': opt,
+        'sampler': sampler,
+        'sd': sd_model,
+        'sam': mask_generator,
+        'pm': pm_model,
+        'adapter': LatentSegAdapter,
+        'img_path': opt.input_image,
+        'edit': opt.edit
     }
-    cin = load_img(opt.input_image)
 
+
+    cout = diffusion_inference(**Cin_Models)
 
 
 

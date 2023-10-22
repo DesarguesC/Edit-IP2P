@@ -1351,9 +1351,6 @@ class DiffusionWrapper(pl.LightningModule):
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'cut', 'add-control', 'cat-control', 'ip2p-control']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, **kwargs):
-        
-        
-
         """
             extra_feature: 
                 SAM segmentation result,
@@ -1382,21 +1379,16 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t, context=cc)
         
         elif self.conditioning_key == 'add-control':
-            
-            # assert self.diffusion_model.in_channels == 4
-            # x: bsize * 4 * 512 * 512
-            # assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
-            #         f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
+
             seg_cond_latent = kwargs['seg_cond_latent']
             pm_model = kwargs['projection']
             adapter = kwargs['adapter']
             use_time_emb = kwargs['time_emb']
-            
-            # print(f'step into add-control: t.device = {t.device}')
+
             proj_cond = pm_model(seg_cond_latent).to(self.device)
-            ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1).to(self.device)
-            # print(f'ad_input.shape = {ad_input.shape}, ad_input.device = {ad_input.device}')
-            feature_list = adapter(ad_input, t = t if use_time_emb else None)   # no time embedding
+            ad_input = torch.cat([torch.cat([proj_cond + c_concat[i], seg_cond_latent + c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
+
+            feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
             out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
         
