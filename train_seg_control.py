@@ -5,6 +5,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.nn.functional import kl_div
 import argparse
+from random import randint
 import torch.multiprocessing as mp
 import torch.distributed as dist
 
@@ -356,9 +357,16 @@ def main():
             if (current_iter+1) % 20 == 0:
                 cin_pic = cout_pic = data['cin']
                 edit_prompt = ''
+                u = randint(0,200)
+                if u < 5:
+                    cin_pic = cout_pic = torch.randn_like(torch.from_numpy(cin_pic), dtype=torch.float32, device=opt.device, requires_grad=True).numpy()
+            
             else: cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
             # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # low time cost tested
+            
+            if (current_iter+1) % 20 == 1:
+                cin_pic = cout_pic = torch.randn_like(torch.from_numpy(cin_pic), dtype=torch.float32, device=opt.device, requires_grad=True).numpy()
 
             with torch.no_grad():
                 # cin_pic.shape = [8, 512, 512, 3]
