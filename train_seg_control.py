@@ -162,23 +162,6 @@ def parsr_args():
         help="number of ddim sampling steps",
     )
     parser.add_argument(
-        "--n_samples",
-        type=int,
-        default=1,
-        help="how many samples to produce for each given prompt. A.k.a. batch size",
-    )
-    parser.add_argument(
-        "--scale",
-        type=float,
-        default=7.5,
-        help="unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))",
-    )
-    parser.add_argument(
-        "--gpus",
-        default=[0, 1, 2, 3],
-        help="gpu idx",
-    )
-    parser.add_argument(
         '--local_rank',
         default=0,
         type=int,
@@ -257,9 +240,6 @@ def main():
                                use_conv=False, use_time=opt.adapter_time_emb).train().to(device)
         
     
-    
-    
-    
     if opt.init:
         LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
         LatentSegAdapter.train()
@@ -299,9 +279,9 @@ def main():
     
     
     Models = {
-        'projection': pm_model if opt.use_single_gpu else pm_model.module,
+        # 'projection': pm_model if opt.use_single_gpu else pm_model.module,
         'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module,
-        'time_emb': opt.adapter_time_emb
+        'use_time_emb': opt.adapter_time_emb
     }
     
     torch.cuda.empty_cache()
@@ -365,6 +345,7 @@ def main():
             # low time cost tested
             # print(f'{current_iter} => cin_pic.shape = {cin_pic.shape}, edit-prompt = {edit_prompt}')
             with torch.no_grad():
+                # cond = [prompt_cond, init_latent, seg_cond, seg_cond_latent]
                 # cin_pic.shape = [8, 512, 512, 3]
                 print(cin_pic.shape)
                 seg_cond = img2seg(cin_pic, mask_generator, opt.device)
@@ -373,27 +354,16 @@ def main():
                 z_T = img2latent(cout_pic, sd_bare, opt.device)
                 del cin_pic 
                 del cout_pic
-                
+                seg_cond.to(opt.device)
                 seg_cond_latent = seg2latent(seg_cond, sd_bare, opt.device)
                 seg_cond_latent = sl2latent(seg_cond_latent, pm_bare, opt.device)
-                seg_cond.to(opt.device)
 
             assert z_0.shape == z_T.shape, f'z0.shape = {z_0.shape}, zT.shape = {z_T.shape}'
 
             optimizer.zero_grad()
             LatentSegAdapter.zero_grad()
 
-            """
-                Models = {
-                    'projection': pm_model if opt.use_single_gpu else pm_model.module,
-                    'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module,
-                    'time_emb': opt.adapter_time_emb
-                }
-            """
-            # *args: (c, z_0, seg_cond)
-            # **kwargs: Models
-            
-            l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond, seg_cond_latent], **Models)
+            l_pixel, loss_dict = sd_model(z_T, c=[[c], [z_0], [seg_cond], [seg_cond_latent]], **Models)
             l_pixel.backward()
             optimizer.step()
 

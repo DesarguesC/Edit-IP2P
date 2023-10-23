@@ -112,6 +112,12 @@ def parsr_args():
         default=False,
         help='whether to add embedded time feature into adapter'
     )
+    parser.add_argument(
+        '--Type',
+        type=str,
+        default='big',
+        help='use which adapter we trained'
+    )
     opt = parser.parse_args()
     return opt
 
@@ -122,14 +128,18 @@ def main():
         
     sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
     
-    # LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=False)
-    # opt.adapter_time_emb = False
+    if opt.Type == 'small':
+        LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=False)
+        opt.adapter_time_emb = False
 
     # no time embedding weights have been trained
-
-    LatentSegAdapter = Adapter(cin=8 * 16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False,
-                               use_time=True).to(opt.device)
-    opt.adapter_time_emb = True
+    elif opt.Type == 'big':
+        LatentSegAdapter = Adapter(cin=8 * 16, channels=[256, 512, 1024, 1024], \
+                                       nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=True).to(opt.device)
+        opt.adapter_time_emb = True
+    else:
+        assert 0
+    
 
     LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
     LatentSegAdapter.eval().to(opt.device)
