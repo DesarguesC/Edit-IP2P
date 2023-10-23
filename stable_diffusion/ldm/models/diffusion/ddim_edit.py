@@ -189,9 +189,10 @@ class DDIMSampler(object):
                       cond=None, unconditional_conditioning=None, 
                       img_cond=None, img_uncond=None, **kwargs):
         b, *_, device = *x.shape, x.device
-        assert 'seg_cond_latent' in kwargs.keys() and 'projection' in kwargs.keys() and 'adapter' in kwargs.keys() \
-                    and 'time_emb' in kwargs.keys() and 'seg_uncond_latent' in kwargs.keys(), f'kwargs.keys = {kwargs.keys()}'
+        # assert 'seg_cond_latent' in kwargs.keys() and 'projection' in kwargs.keys() and 'adapter' in kwargs.keys() \
+        #             and 'time_emb' in kwargs.keys() and 'seg_uncond_latent' in kwargs.keys(), f'kwargs.keys = {kwargs.keys()}'
         # print(f'single x.shape={x.shape}')
+        
         seg_cond_latent = kwargs['seg_cond_latent']
         seg_uncond_latent = kwargs['seg_uncond_latent']
         cond_pm = kwargs['cond_pm']
@@ -204,7 +205,7 @@ class DDIMSampler(object):
             # no unconditioning image guidance, only prompt guidance
             x_in = torch.cat([x] * 2)
             t_in = torch.cat([t] * 2)
-
+            
             c_in = [
                 [unconditional_conditioning, cond],
                 [img_uncond, img_cond],
@@ -219,10 +220,19 @@ class DDIMSampler(object):
             x_in = torch.cat([x] * 3)
             t_in = torch.cat([t] * 3)
             
+            # print(f'cond.shape = {cond.shape}')
+            # print(f'unconditional_conditioning.shpae = {unconditional_conditioning.shape}')
+            # print(f'img_cond.shape = {img_cond.shape}')
+            # print(f'img_uncond.shape = {img_uncond.shape}')
+            # print(f'seg_cond_latent.shape = {seg_cond_latent.shape}')
+            # print(f'seg_uncond_latent.shape = {seg_uncond_latent.shape}')
+            # print(f'cond_pm.shape = {cond_pm.shape}')
+            # print(f'uncond_pm.shape = {uncond_pm.shape}')
+            
             c_in = [
                 [unconditional_conditioning, unconditional_conditioning, cond],   # prompt
                 [img_uncond, img_cond, img_cond],                                 # image latent
-                [seg_uncond_latent, seg_cond_latent, seg_cond_latent],            # seg cond
+                [seg_uncond_latent, seg_cond_latent, seg_cond_latent],            # seg cond latent
                 [uncond_pm, cond_pm, cond_pm]                                     # projected seg cond
             ]
             

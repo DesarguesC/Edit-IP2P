@@ -206,8 +206,9 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
     x_T_init = cin_latent
     
     cond_pm = sl2latent(cin_seg_latent, pm, device)
+    print(f'cond_pm.shape = {cond_pm.shape}')
     uncond_pm = sl2latent(cin_uncond_latent, pm, device)
-    
+    print(f'uncond_pm.shape = {uncond_pm.shape}')
     
     
     prompts = {
@@ -232,9 +233,8 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
         'uncond_pm': uncond_pm.to(device),
         'seg_uncond_latent': cin_uncond_seg_latent.to(device),
         'seg_cond_latent': cin_seg_latent.to(device),
-        'projection': pm.to(device),
         'adapter': adapter.to(device),
-        'time_emb': opt.adapter_time_emb,
+        'use_time_emb': opt.adapter_time_emb
     }
 
     _, opt.C, opt.H, opt.W = cin_latent.shape

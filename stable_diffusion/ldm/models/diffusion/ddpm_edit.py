@@ -909,6 +909,15 @@ class LatentDiffusion(DDPM):
         # cond: prompt2tensor
         # assert not isinstance(cond, dict)
         
+        
+        # c_in = [
+        #         [unconditional_conditioning, unconditional_conditioning, cond],   # prompt
+        #         [img_uncond, img_cond, img_cond],                                 # image latent
+        #         [seg_uncond_latent, seg_cond_latent, seg_cond_latent],            # seg cond latent
+        #         [uncond_pm, cond_pm, cond_pm]                                     # projected seg cond
+        #     ]
+        
+        
         if not isinstance(cond, list):
             cond = [cond]
         elif len(cond) == 1:
@@ -921,10 +930,10 @@ class LatentDiffusion(DDPM):
             # TODO: whether to give proj_cond directly ?
             if not isinstance(cond[1], list):
                 assert cond[1].shape == cond[3].shape, f'init_latent shape = {cond[1].shape}, seg_cond(latent) shape ' \
-                                                   f'= {cond[3].shape}, that leads to CAT error: '
+                                                   f'= {cond[3].shape}, that will lead to CAT error'
             
             # c_crossattn => prompt
-            cond_dict = {'c_crossattn': get_list(cond[0]), 'c_concat': get_list(cond[1]) }
+            cond_dict = {'c_crossattn': torch.cat(get_list(cond[0]), dim=0), 'c_concat': torch.cat(get_list(cond[1]), dim=0)}
         
 
         # assert 0, f'cond.keys() = {cond.keys()}'
@@ -932,7 +941,7 @@ class LatentDiffusion(DDPM):
         
         
         kwargs['seg_cond'] = torch.cat(get_list(cond[2]), dim=0)   # list
-        kwargs['seg_cond_latent'] = torch.cat(get_list(cond[3]), dim=0)   # list
+        kwargs['cond_pm'] = torch.cat(get_list(cond[3]), dim=0)   # list
         cond = cond_dict
         assert not isinstance(x_noisy, list), f'type(x_noisy): {type(x_noisy)}'
         x_recon = self.model(x_noisy, t, **cond, **kwargs)
@@ -1352,7 +1361,7 @@ class DiffusionWrapper(pl.LightningModule):
         super().__init__()
         self.diffusion_model = instantiate_from_config(diff_model_config)
         self.conditioning_key = conditioning_key
-        assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'cut', 'add-control', 'cat-control', 'ip2p-control']
+        assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'cut', 'add-control', 'cat-control', 'ip2p-control', 'add-control-test']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, **kwargs):
         """
@@ -1382,15 +1391,14 @@ class DiffusionWrapper(pl.LightningModule):
             # multi times of origin batch size
             out = self.diffusion_model(xc, t, context=cc)
         
-        elif self.conditioning_key == 'add-control':
+        elif self.conditioning_key == 'add-control-test':
 
-            seg_cond_latent = kwargs['seg_cond_latent']
-            pm_model = kwargs['projection']
+            seg_cond_latent = kwargs['seg_cond']
+            proj_cond = kwargs['cond_pm']
             adapter = kwargs['adapter']
-            use_time_emb = kwargs['time_emb']
-
-            proj_cond = pm_model(seg_cond_latent).to(self.device)
-            ad_input = torch.cat([torch.cat([proj_cond + c_concat[i], seg_cond_latent + c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
+            use_time_emb = kwargs['use_time_emb']
+            
+            ad_input = torch.cat([proj_cond + c_concat, seg_cond_latent + c_concat], dim=1).to(self.device)
 
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
@@ -1409,6 +1417,32 @@ class DiffusionWrapper(pl.LightningModule):
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
             out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
+        
+        elif self.conditioning_key == 'add-control':
+
+            seg_cond_latent = kwargs['seg_cond']
+            proj_cond = kwargs['cond_pm']
+            adapter = kwargs['adapter']
+            use_time_emb = kwargs['use_time_emb']
+            
+            ad_input = torch.cat([proj_cond + c_concat, seg_cond_latent + c_concat], dim=1).to(self.device)
+
+            feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
+            cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
+            out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
+            
+#             seg_cond_latent = kwargs['seg_cond_latent']
+#             pm_model = kwargs['projection']
+#             adapter = kwargs['adapter']
+#             use_time_emb = kwargs['time_emb']
+
+#             proj_cond = pm_model(seg_cond_latent).to(self.device)
+#             ad_input = torch.cat([torch.cat([proj_cond + c_concat[i], seg_cond_latent + c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
+
+#             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
+#             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
+#             out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
+        
             
 
 

@@ -393,7 +393,7 @@ def main():
             # *args: (c, z_0, seg_cond)
             # **kwargs: Models
             
-            l_pixel, loss_dict = sd_model(z_T, c=[c, z_0, seg_cond, seg_cond_latent], **Models)
+            l_pixel, loss_dict = sd_model(z_T, c=[[c], [z_0], [seg_cond], [seg_cond_latent]], **Models)
             l_pixel.backward()
             optimizer.step()
 
