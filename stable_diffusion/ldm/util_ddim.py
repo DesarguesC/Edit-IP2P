@@ -31,6 +31,8 @@ def img2latent(R3: np.ndarray, model, device):
     # print(f'R3.shape = {R3.shape}')
     if not isinstance(R3, np.ndarray): R3 = R3.numpy()
     image = np.array(R3).astype(np.float32) / 255.
+    if len(image.shape) == 3:
+        image = rearrange(image, 'h w c -> 1 h w c')
     image = 2. * torch.from_numpy(rearrange(image, 'b h w c -> b c h w')) - 1.
     return model.get_first_stage_encoding(model.encode_first_stage(image.clone().to(torch.float32).\
                                                                    detach().requires_grad_(False).to(device)))
@@ -38,11 +40,13 @@ def img2latent(R3: np.ndarray, model, device):
 @torch.no_grad()
 def img2seg(R3: np.ndarray, model, device):
     # [8, 512, 512, 3]
-    if not isinstance(R3, np.ndarray): R3 = R3.numpy()
-    assert len(R3.shape) == 4, f'R3.shape = {R3.shape}'
+    if not isinstance(R3, np.ndarray): R3 = R3.detach().cpu().numpy()
+    assert len(R3.shape) >= 3, f'R3.shape = {R3.shape}'
     R3 = np.array(R3.astype(np.uint8))
+    if len(R3.shape) == 3:
+        R3 = rearrange(R3, 'h w c -> 1 h w c')
+    # print(f'img2seg: {R3.shape}')
     ll = R3.shape[0]
-    assert ll != 1
     R3_ = [model(R3[i].squeeze()) for i in range(ll)]
     # each R3[0] -> each object
     mask = get_masked_Image_(R3_, use_alpha=False)
@@ -262,12 +266,7 @@ def resize_numpy_image(image, max_resolution=512 * 512, resize_short_edge=None, 
     h = int(np.round(h * k / 64)) * 64
     w = int(np.round(w * k / 64)) * 64
     
-    if opt is not None:
-        try:
-            h *= opt.fac
-            w *= opt.fac
-        except:
-            raise NotImplementedError
+
     
     image = cv2.resize(image, (w, h), interpolation=cv2.INTER_LANCZOS4)
     return image

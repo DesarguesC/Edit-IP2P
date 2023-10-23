@@ -7,7 +7,8 @@ sys.path.append('../')
 sys.path.append('./stable_diffusion')
 
 from stable_diffusion.ldm.util_ddim import (load_inference_train, reduce_tensor, img2latent, img2seg, seg2latent, sl2latent, load_img)
-from stable_diffusion.ldm.inference_base import str2bool
+from stable_diffusion.ldm.models.diffusion.ddim_edit import DDIMSampler
+from stable_diffusion.ldm.inference_base import (str2bool, diffusion_inference)
 from stable_diffusion.eldm.adapter import Adapter
 from basicsr.utils import (get_root_logger, get_time_str,
                            scandir, tensor2img)
@@ -16,6 +17,7 @@ from stable_diffusion.ldm.data.ip2p import Ip2pDatasets
 from sam.seg2latent import ProjectionModel as PM
 from sam.data import DataCreator
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+from stable_diffusion.ldm.inference_base import get_base_argument_parser as gbap
 
 
 def mkdir(path: str, rank) -> str:
@@ -43,7 +45,7 @@ def mkdir(path: str, rank) -> str:
 
 
 def parsr_args():
-    parser = argparse.ArgumentParser()
+    parser = gbap()
     parser.add_argument(
         "--plms",
         action='store_true',
@@ -81,58 +83,16 @@ def parsr_args():
         help='LatentSegmentAdapter model path'
     )
     parser.add_argument(
-        "--config",
-        type=str,
-        default="./configs/ip2p-ddim.yaml",
-        help="path to config which constructs model",
-    )
-    parser.add_argument(
         "--input_image",
         type=str,
         default='./example/1.jpg',
         help='path to an input image'
     )
     parser.add_argument(
-        "--max_resolution",
-        type=int,
-        default=512 * 512,            # use cat-control, cat at channels: 2 * 512
-        help="image height, in pixel space",
-    )
-    parser.add_argument(
-        "--H",
-        type=int,
-        default=512 * 2,            # use cat-control, cat at channels -> 2 * 512
-        help="image height, in pixel space",
-    )
-    parser.add_argument(
-        "--W",
-        type=int,
-        default=512,
-        help="image width, in pixel space",
-    )
-    parser.add_argument(
-        "--C",
-        type=int,
-        default=4,
-        help="latent channels",
-    )
-    parser.add_argument(
-        "--f",
-        type=int,
-        default=8,
-        help="downsampling factor",
-    )
-    parser.add_argument(
-        "--sample_steps",
-        type=int,
-        default=50,
-        help="number of ddim sampling steps",
-    )
-    parser.add_argument(
-        "--n_samples",
-        type=int,
-        default=1,
-        help="how many samples to produce for each given prompt batch size",
+        '--edit',
+        type=str,
+        default='',
+        help='edit prompt / guidance / instructions'
     )
     parser.add_argument(
         "--txt_scale",
@@ -162,20 +122,33 @@ def main():
         
     sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
     
-    LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=opt.adapter_time_emb)
+    # LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=False)
+    # opt.adapter_time_emb = False
+
     # no time embedding weights have been trained
+
+    LatentSegAdapter = Adapter(cin=8 * 16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False,
+                               use_time=True).to(opt.device)
+    opt.adapter_time_emb = True
+
     LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
     LatentSegAdapter.eval().to(opt.device)
     mask_generator = SamAutomaticMaskGenerator(sam_model).generate
-    
-    Models = {
-        'projection': pm_model if opt.use_single_gpu else pm_model.module,
-        'adapter': LatentSegAdapter if opt.use_single_gpu else LatentSegAdapter.module,
-        'time_emb': opt.adapter_time_emb
+    sampler = DDIMSampler(sd_model)
+    Cin_Models = {
+        'opt': opt,
+        'sampler': sampler,
+        'sd_model': sd_model,
+        'sam': mask_generator,
+        'pm': pm_model,
+        'adapter': LatentSegAdapter,
+        'img_path': opt.input_image,
+        'edit': opt.edit
     }
-    cin = load_img(opt.input_image)
 
-
+    cout = diffusion_inference(**Cin_Models)
+    opt.outdir = os.path.join(opt.outdir, 'output.png') if not opt.outdir.endswith('.png') else opt.outdir
+    cv2.imwrite(opt.outdir, tensor2img(cout))
 
 
     return

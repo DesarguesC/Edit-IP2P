@@ -110,7 +110,7 @@ class Adapter(nn.Module):
         if use_time:
             self.first_time_emb = TimeEmbed(in_channels=self.cin, out_channels=channels[0])
             self.time_embeddings = [TimeEmbed(in_channels=channels[i-1], out_channels=channels[i], res=False) for i in range(1, len(channels))]
-        self.time_embeddings.append(TimeEmbed(in_channels=channels[-1], out_channels=channels[-1], res=True))
+            self.time_embeddings.append(TimeEmbed(in_channels=channels[-1], out_channels=channels[-1], res=True))
         self.channels = channels
         self.nums_rb = nums_rb
         self.body = []
@@ -142,7 +142,7 @@ class Adapter(nn.Module):
                 idx = i * self.nums_rb + j
                 x = self.body[idx](x)
             # print(f'before: t_emb.device = {t_emb.device}')
-            t_emb = self.time_embeddings[i](t_emb.to('cpu')).to(DEVICE)
+            t_emb = self.time_embeddings[i](t_emb.to('cpu')).to(DEVICE) if t!= None else None
             # probably due to the selection appeared in forward step
             # print(f'after (no fix, input of next emb): t_emb.shape = {t_emb.shape}')
             t_emb_ = fix_shape(t_emb, x) if t != None else None

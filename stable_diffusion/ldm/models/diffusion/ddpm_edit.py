@@ -32,7 +32,8 @@ from ldm.models.diffusion.ddim import DDIMSampler
 __conditioning_keys__ = {'concat': 'c_concat',
                          'crossattn': 'c_crossattn',
                          'adm': 'y'}
-
+def get_list(x: any) -> list:
+    return x if isinstance(x, list) else [x]
 
 def disabled_train(self, mode=True):
     """Overwrite model.train with this function to make sure train/eval mode
@@ -906,33 +907,36 @@ class LatentDiffusion(DDPM):
 
     def apply_model(self, x_noisy, t, cond, return_ids=False, **kwargs):
         # cond: prompt2tensor
-        if isinstance(cond, dict):
-            # hybrid case, cond is exptected to be a dict
-            pass
+        # assert not isinstance(cond, dict)
+        
+        if not isinstance(cond, list):
+            cond = [cond]
+        elif len(cond) == 1:
+            key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
+            cond = {key: cond}
+            assert kwargs == None, 'shouldn\'t have **kwargs'
         else:
-            if not isinstance(cond, list):
-                cond = [cond]
-            elif len(cond) == 1:
-                key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
-                cond = {key: cond}
-                assert kwargs == None, 'shouldn\'t have **kwargs'
-            else:
-                # cond = [prompt_cond, init_latent, seg_cond, seg_cond_latent]
-                # TODO: whether to give proj_cond directly ?
-                assert len(cond) == 4, f'cond wrong with length = {len(cond)}'
+            assert len(cond) == 4 or isinstance(cond[1], list), f'cond = {cond}'
+            # cond = [prompt_cond, init_latent, seg_cond, seg_cond_latent]
+            # TODO: whether to give proj_cond directly ?
+            if not isinstance(cond[1], list):
                 assert cond[1].shape == cond[3].shape, f'init_latent shape = {cond[1].shape}, seg_cond(latent) shape ' \
-                                                       f'= {cond[3].shape}, that leads to CAT error: '
-                # c_crossattn => prompt
-                cond_dict = {'c_crossattn': [cond[0]], 'c_concat': [cond[1]]}
+                                                   f'= {cond[3].shape}, that leads to CAT error: '
             
-            # assert 0, f'cond.keys() = {cond.keys()}'
-            # TODO: (projection_model, LatentSegAdapter)  =>  in **kwargs
-            kwargs['seg_cond'] = cond[2]
-            kwargs['seg_cond_latent'] = cond[3]
-            cond = cond_dict
-            assert not isinstance(x_noisy, list), f'type(x_noisy): {type(x_noisy)}'
-            x_recon = self.model(x_noisy, t, **cond, **kwargs)
-            #  cond:  {c_concat: list = None, c_crossattn: list = None}
+            # c_crossattn => prompt
+            cond_dict = {'c_crossattn': get_list(cond[0]), 'c_concat': get_list(cond[1]) }
+        
+
+        # assert 0, f'cond.keys() = {cond.keys()}'
+        # TODO: (projection_model, LatentSegAdapter)  =>  in **kwargs
+        
+        
+        kwargs['seg_cond'] = torch.cat(get_list(cond[2]), dim=0)   # list
+        kwargs['seg_cond_latent'] = torch.cat(get_list(cond[3]), dim=0)   # list
+        cond = cond_dict
+        assert not isinstance(x_noisy, list), f'type(x_noisy): {type(x_noisy)}'
+        x_recon = self.model(x_noisy, t, **cond, **kwargs)
+        #  cond:  {c_concat: list = None, c_crossattn: list = None}
 
         if isinstance(x_recon, tuple) and not return_ids:
             return x_recon[0]
@@ -1351,9 +1355,6 @@ class DiffusionWrapper(pl.LightningModule):
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm', 'cut', 'add-control', 'cat-control', 'ip2p-control']
 
     def forward(self, x, t, c_concat: list = None, c_crossattn: list = None, **kwargs):
-        
-        
-
         """
             extra_feature: 
                 SAM segmentation result,
@@ -1382,51 +1383,33 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(xc, t, context=cc)
         
         elif self.conditioning_key == 'add-control':
-            
-            # assert self.diffusion_model.in_channels == 4
-            # x: bsize * 4 * 512 * 512
-            # assert isinstance(c_concat, list) and isinstance(c_crossattn, list), \
-            #         f'Type not match: type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
+
             seg_cond_latent = kwargs['seg_cond_latent']
             pm_model = kwargs['projection']
             adapter = kwargs['adapter']
             use_time_emb = kwargs['time_emb']
-            
-            # print(f'step into add-control: t.device = {t.device}')
+
             proj_cond = pm_model(seg_cond_latent).to(self.device)
-            ad_input = torch.cat([proj_cond + c_concat[0], seg_cond_latent + c_concat[0]], dim=1).to(self.device)
-            # print(f'ad_input.shape = {ad_input.shape}, ad_input.device = {ad_input.device}')
-            feature_list = adapter(ad_input, t = t if use_time_emb else None)   # no time embedding
+            ad_input = torch.cat([torch.cat([proj_cond + c_concat[i], seg_cond_latent + c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
+
+            feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
             out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
         
         elif self.conditioning_key == 'cat-control':
-            assert not isinstance(x, list) and isinstance(c_concat, list) and isinstance(c_crossattn, list), \
-            f'Type not match: type(x) = {type(x)}, type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
-            # c_concat: image, c_crossattn: encoded prompt
-            try:
-                
-                seg_cond_latent = kwargs['seg_cond_latent']
-                pm_model = kwargs['projection']
-                adapter = kwargs['adapter']
-                assert seg_cond_latent.shape == x.shape, f'inequal shape: seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
-            except Exception as err:
-                assert 0, f'{err.__str__}'
-            assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-            proj_cond = pm_model(seg_cond_latent).to(self.device)
             
-            print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}')
-            kwargs['feature_cond'] = adapter(torch.cat([proj_cond, seg_cond_latent] + c_crossattn * 2, dim=1))
-            x = torch.cat([x] * 2, dim=2)
-            # x = torch.cat([x, c_concat], dim=2)   ?
-            cc = torch.cat([c_crossattn, c_concat], dim=2)
-            # cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) * 2, dim=0)
-            # TODO: keep batch num, add on H param
-            out = self.diffusion_model(x, t, context=cc, **kwargs)
+            seg_cond_latent = kwargs['seg_cond_latent']
+            pm_model = kwargs['projection']
+            adapter = kwargs['adapter']
+            use_time_emb = kwargs['time_emb']
 
-            # use Noise created on diffusion training step, cat Noise and my Inputs ???
-            #                                       I also adopt it in inference step
+            proj_cond = pm_model(seg_cond_latent).to(self.device)
+            ad_input = torch.cat([torch.cat([proj_cond, seg_cond_latent, c_concat[i], c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
 
+            feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
+            cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
+            out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
+            
 
 
         elif self.conditioning_key == 'adm':

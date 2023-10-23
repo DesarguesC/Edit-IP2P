@@ -1,13 +1,18 @@
 import argparse
-import torch
+import torch, cv2
+import numpy as np
 from omegaconf import OmegaConf
-from einops import repeat
+from einops import repeat, rearrange
 
 from stable_diffusion.ldm.models.diffusion.ddim import DDIMSampler
 from stable_diffusion.ldm.models.diffusion.plms import PLMSSampler
-# from ldm.modules.encoders.adapter import Adapter, StyleAdapter, Adapter_light
-# from ldm.modules.extra_condition.api import ExtraCondition
-from stable_diffusion.ldm.util_ddim import fix_cond_shapes, load_model_from_config, read_state_dict, get_resize_shape
+
+from stable_diffusion.ldm.util_ddim import (
+    fix_cond_shapes,DEFAULT_NEGATIVE_PROMPT,
+    load_model_from_config,
+    resize_numpy_image,
+    img2latent, img2seg, seg2latent, sl2latent
+)
 # import mmpose
 
 def str2bool(v):
@@ -42,12 +47,7 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default=1,
         help='whether to use default negative prompt',
     )
-    parser.add_argument(
-        '--cond_path',
-        type=str,
-        default='./models/test.png',
-        help='condition image path / inference',
-    )
+
 
     parser.add_argument(
         '--cond_inp_type',
@@ -91,28 +91,6 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help='resize short edge of the input image, if this arg is set, max_resolution will not be used',
     )
-
-    parser.add_argument(
-        '--C',
-        type=int,
-        default=4,
-        help='latent channels / batch size / n_samples',
-    )
-
-    parser.add_argument(
-        '--f',
-        type=int,
-        default=8,
-        help='downsampling factor (after running Encode, mapped into latent space)',
-    )
-
-    parser.add_argument(
-        '--scale',
-        type=float,
-        default=7.5,
-        help='unconditional guidance scale: eps = eps(x, empty) + scale * (eps(x, cond) - eps(x, empty))',
-    )
-
     parser.add_argument(
         '--cond_tau',
         type=float,
@@ -134,7 +112,36 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default=1,
         help='namely the batch size, set as 1 in inference'
     )
-
+    parser.add_argument(
+        "--H",
+        type=int,
+        default=512 * 2,            # use cat-control, cat at channels -> 2 * 512
+        help="image height, in pixel space",
+    )
+    parser.add_argument(
+        "--W",
+        type=int,
+        default=512,
+        help="image width, in pixel space",
+    )
+    parser.add_argument(
+        "--C",
+        type=int,
+        default=4,
+        help="latent channels",
+    )
+    parser.add_argument(
+        "--f",
+        type=int,
+        default=8,
+        help="downsampling factor",
+    )
+    parser.add_argument(
+        "--sample_steps",
+        type=int,
+        default=50,
+        help="number of ddim sampling steps",
+    )
     parser.add_argument(
         '--seed',
         type=int,
@@ -168,43 +175,89 @@ def get_sd_models(opt):
 
 
 
-def diffusion_inference(opt, model, sampler, adapter_features=None, append_to_context=None, **extra_args):
-    # get text embedding
-    # c = model.get_learned_conditioning([opt.edit_prompt])
-    # if opt.scale != 1.0:
-    #     uc = model.get_learned_conditioning([opt.neg_prompt])
-    # else:
-    #     uc = None
+def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit):
+    # sampler: DDIMSampler
+    device = opt.device
+    cin_img = cv2.imread(img_path)
+    numpy_cin = resize_numpy_image(cin_img, max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge)
+    # print(f'numpy_cin.shape = {numpy_cin.shape}')
+    
+    cin_latent = img2latent(numpy_cin, sd_model, device)   #   => to init inference x_T
+    cin_uncond = np.random.randint(low=0, high=256, size=numpy_cin.shape, dtype=np.uint8)
+    cin_uncond_latent = img2latent(cin_uncond, sd_model, device)
+    
+    
+    
+    # consider whether to init diffusion x_T with input image
+    cin_seg = img2seg(numpy_cin, sam, device)
+    cin_seg_latent = seg2latent(cin_seg, sd_model, device)
+    cin_uncond_seg = img2seg(cin_uncond, sam, device)
+    cin_uncond_seg_latent = seg2latent(cin_uncond_seg, sd_model, device)
+    # print(f'cin_seg_latent.shape = {cin_seg_latent.shape}')
+    # print(f'cin_uncond_seg_latent.shape = {cin_uncond_seg_latent.shape}')
+    
+    images = {
+        'cond': cin_latent.to(device), 
+        'uncond': cin_uncond_latent.to(device), 
+    }
+    
+    # seg_latent = seg2latent(cin_seg_latent, pm, device)
+    # print(f'seg_latent.shape = {seg_latent.shape}')
+    x_T_init = cin_latent
+    
+    cond_pm = sl2latent(cin_seg_latent, pm, device)
+    uncond_pm = sl2latent(cin_uncond_latent, pm, device)
+    
+    
+    
+    prompts = {
+        'cond': sd_model.get_learned_conditioning(["do not modify"]).to(device),
+        'uncond': sd_model.get_learned_conditioning([edit]).to(device)
+    }
+    
+    
+
     try:
-        c, uc = fix_cond_shapes(model, extra_args['cond']['c_crossattn'], extra_args['uncond']['c_crossattn'])
+        prompts['cond'], prompts['uncond'] = fix_cond_shapes(sd_model, prompts['cond'], prompts['uncond'])
     except Exception as err:
         print(err)
-        print(extra_args.keys())
         raise NotImplementedError('Possibly caused by keys not in extra_args')
     
-    c = repeat(c, '1 ... -> b ...', b=opt.n_samples)
-    uc = repeat(uc, '1 ... -> b ...', b=opt.n_samples)
+    prompts['cond'] = repeat(prompts['cond'], '1 ... -> b ...', b=opt.n_samples).to(device)
+    prompts['uncond'] = repeat(prompts['uncond'], '1 ... -> b ...', b=opt.n_samples).to(device)
+    # prompts['cond'], prompts['uncond'] = c, uc
 
-    shape = [opt.C, opt.H // opt.f, opt.W // opt.f]
+    kwargs = {
+        'cond_pm': cond_pm.to(device),
+        'uncond_pm': uncond_pm.to(device),
+        'seg_uncond_latent': cin_uncond_seg_latent.to(device),
+        'seg_cond_latent': cin_seg_latent.to(device),
+        'projection': pm.to(device),
+        'adapter': adapter.to(device),
+        'time_emb': opt.adapter_time_emb,
+    }
+
+    _, opt.C, opt.H, opt.W = cin_latent.shape
+
+    shape = [opt.C, opt.H , opt.W]
 
     samples_latents, _ = sampler.sample(
         S=opt.steps,
-        conditioning=c,
         batch_size=opt.n_samples,
         shape=shape,
         verbose=False,
-        unconditional_conditioning=uc,
-        x_T=None,
-        img_cond=extra_args['cond']['c_concat'],
-        img_uncond=extra_args['uncond']['c_concat'],
-        prompt_guidance_scale=extra_args['text_cfg_scale'],
-        image_guidance_scale=extra_args['image_cfg_scale'],
-        features_adapter=adapter_features,
-        append_to_context=append_to_context,
+        conditioning=prompts['cond'],
+        unconditional_conditioning=prompts['uncond'],
+        x_T=None,   # TODO: use cin_latent ?
+        img_cond=images['cond'],             # cin_image    -> seg_cond image
+        img_uncond=images['uncond'],         # random image -> seg_cond image
+        prompt_guidance_scale=opt.txt_scale,
+        image_guidance_scale=opt.img_scale,
         cond_tau=opt.cond_tau,
+        **kwargs
     )
 
-    x_samples = model.decode_first_stage(samples_latents)
+    x_samples = sd_model.decode_first_stage(samples_latents)
     x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
 
     return x_samples
