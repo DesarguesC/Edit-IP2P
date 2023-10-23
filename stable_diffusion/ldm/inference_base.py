@@ -192,7 +192,7 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
     cin_seg = img2seg(numpy_cin, sam, device)
     cin_seg_latent = seg2latent(cin_seg, sd_model, device)
     cin_uncond_seg = img2seg(cin_uncond, sam, device)
-    cin_uncond_seg_latent(cin_uncond_seg, sd_model, device)
+    cin_uncond_seg_latent = img2latent(cin_uncond_seg, sd_model, device)
     print(f'cin_seg_latent.shape = {cin_seg_latent.shape}')
     print(f'cin_uncond_seg_latent.shape = {cin_seg_latent.shape}')
     # seg_latent = seg2latent(cin_seg_latent, pm, device)
