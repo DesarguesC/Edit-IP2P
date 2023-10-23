@@ -1398,8 +1398,7 @@ class DiffusionWrapper(pl.LightningModule):
             adapter = kwargs['adapter']
             use_time_emb = kwargs['use_time_emb']
             
-            print(f'x.shape = {x.shape}, c_concat.shape = {c_concat.shape}')
-            # xc = torch.cat([x] + [c_concat], dim = 1)
+            # print(f'x.shape = {x.shape}, c_concat.shape = {c_concat.shape}')
             
             ad_input = torch.cat([proj_cond, c_concat, seg_cond_latent, c_concat], dim=1).to(self.device)
 
@@ -1409,13 +1408,14 @@ class DiffusionWrapper(pl.LightningModule):
         
         elif self.conditioning_key == 'cat-control':
             
-            seg_cond_latent = kwargs['seg_cond_latent']
-            pm_model = kwargs['projection']
+            seg_cond_latent = kwargs['seg_cond']
+            proj_cond = kwargs['cond_pm']
             adapter = kwargs['adapter']
-            use_time_emb = kwargs['time_emb']
-
-            proj_cond = pm_model(seg_cond_latent).to(self.device)
-            ad_input = torch.cat([torch.cat([proj_cond, seg_cond_latent, c_concat[i], c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
+            use_time_emb = kwargs['use_time_emb']
+            
+            xc = torch.cat( get_list(x) + get_list(c_concat) , dim = 1)
+            
+            ad_input = torch.cat([proj_cond, c_concat, seg_cond_latent, c_concat], dim=1).to(self.device)
 
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
