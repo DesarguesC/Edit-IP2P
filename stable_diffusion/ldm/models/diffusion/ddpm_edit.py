@@ -929,6 +929,8 @@ class LatentDiffusion(DDPM):
 
         # assert 0, f'cond.keys() = {cond.keys()}'
         # TODO: (projection_model, LatentSegAdapter)  =>  in **kwargs
+        
+        
         kwargs['seg_cond'] = torch.cat(get_list(cond[2]), dim=0)   # list
         kwargs['seg_cond_latent'] = torch.cat(get_list(cond[3]), dim=0)   # list
         cond = cond_dict

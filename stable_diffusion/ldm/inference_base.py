@@ -180,7 +180,7 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
     device = opt.device
     cin_img = cv2.imread(img_path)
     numpy_cin = resize_numpy_image(cin_img, max_resolution=opt.max_resolution, resize_short_edge=opt.resize_short_edge)
-    print(f'numpy_cin.shape = {numpy_cin.shape}')
+    # print(f'numpy_cin.shape = {numpy_cin.shape}')
     
     cin_latent = img2latent(numpy_cin, sd_model, device)   #   => to init inference x_T
     cin_uncond = np.random.randint(low=0, high=256, size=numpy_cin.shape, dtype=np.uint8)
@@ -192,9 +192,15 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
     cin_seg = img2seg(numpy_cin, sam, device)
     cin_seg_latent = seg2latent(cin_seg, sd_model, device)
     cin_uncond_seg = img2seg(cin_uncond, sam, device)
-    cin_uncond_seg_latent = img2latent(cin_uncond_seg, sd_model, device)
-    print(f'cin_seg_latent.shape = {cin_seg_latent.shape}')
-    print(f'cin_uncond_seg_latent.shape = {cin_seg_latent.shape}')
+    cin_uncond_seg_latent = seg2latent(cin_uncond_seg, sd_model, device)
+    # print(f'cin_seg_latent.shape = {cin_seg_latent.shape}')
+    # print(f'cin_uncond_seg_latent.shape = {cin_uncond_seg_latent.shape}')
+    
+    images = {
+        'cond': cin_latent.to(device), 
+        'uncond': cin_uncond_latent.to(device), 
+    }
+    
     # seg_latent = seg2latent(cin_seg_latent, pm, device)
     # print(f'seg_latent.shape = {seg_latent.shape}')
     x_T_init = cin_latent
@@ -209,10 +215,7 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
         'uncond': sd_model.get_learned_conditioning([edit]).to(device)
     }
     
-    images = {
-        'cond': cin_seg_latent.to(device), 
-        'uncond': cin_uncond_seg_latent.to(device), 
-    }
+    
 
     try:
         prompts['cond'], prompts['uncond'] = fix_cond_shapes(sd_model, prompts['cond'], prompts['uncond'])
@@ -227,7 +230,7 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
     kwargs = {
         'cond_pm': cond_pm.to(device),
         'uncond_pm': uncond_pm.to(device),
-        'seg_uncond_latent': cin_uncond_seg.to(device),
+        'seg_uncond_latent': cin_uncond_seg_latent.to(device),
         'seg_cond_latent': cin_seg_latent.to(device),
         'projection': pm.to(device),
         'adapter': adapter.to(device),
@@ -245,7 +248,7 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
         verbose=False,
         conditioning=prompts['cond'],
         unconditional_conditioning=prompts['uncond'],
-        x_T=cin_latent,
+        x_T=cin_latent,   # TODO: use cin_latent ?
         img_cond=images['cond'],             # cin_image    -> seg_cond image
         img_uncond=images['uncond'],         # random image -> seg_cond image
         prompt_guidance_scale=opt.txt_scale,

@@ -122,14 +122,14 @@ def main():
         
     sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
     
-    LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=False)
-    opt.adapter_time_emb = False
+    # LatentSegAdapter = Adapter(cin=8*16, channels=[64, 128, 256, 64], nums_rb=2, ksize=1, sk=True, use_conv=False, use_time=False)
+    # opt.adapter_time_emb = False
 
     # no time embedding weights have been trained
 
-    # LatentSegAdapter = Adapter(cin=8 * 16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False,
-    #                            use_time=True).to(opt.device)
-    # opt.adapter_time_emb = True
+    LatentSegAdapter = Adapter(cin=8 * 16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, use_conv=False,
+                               use_time=True).to(opt.device)
+    opt.adapter_time_emb = True
 
     LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
     LatentSegAdapter.eval().to(opt.device)
@@ -146,9 +146,9 @@ def main():
         'edit': opt.edit
     }
 
-
     cout = diffusion_inference(**Cin_Models)
-    print(cout)
+    opt.outdir = os.path.join(opt.outdir, 'output.png') if not opt.outdir.endswith('.png') else opt.outdir
+    cv2.imwrite(opt.outdir, tensor2img(cout))
 
 
     return

@@ -205,30 +205,32 @@ class DDIMSampler(object):
             x_in = torch.cat([x] * 2)
             t_in = torch.cat([t] * 2)
 
-            c_in = {
-                'c_concat': [unconditional_conditioning, cond],
-                'c_crossattn': [img_uncond, img_cond]
-            }
+            c_in = [
+                [unconditional_conditioning, cond],
+                [img_uncond, img_cond],
+                [seg_uncond_latent, seg_cond_latent],
+                [uncond_pm, cond_pm]
+            ]
 
             e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in, **kwargs).chunk(2)
             e_t = e_t_uncond_prompt + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
         else:
             # both image conditioning and prompt conditioning
-            x_in = [x] * 3
-            t_in = torch.cat([t] * 3) # -> (9,6)
+            x_in = torch.cat([x] * 3)
+            t_in = torch.cat([t] * 3)
             
             c_in = [
                 [unconditional_conditioning, unconditional_conditioning, cond],   # prompt
-                [img_uncond, img_cond, img_cond],   # image latent
-                [seg_uncond_latent, seg_cond_latent, seg_cond_latent],   # seg cond => following image latent
-                [uncond_pm, cond_pm, cond_pm]    # projected seg cond => following image latent
+                [img_uncond, img_cond, img_cond],                                 # image latent
+                [seg_uncond_latent, seg_cond_latent, seg_cond_latent],            # seg cond
+                [uncond_pm, cond_pm, cond_pm]                                     # projected seg cond
             ]
             
             # concat prompt vector and latent image to constrain the generation simultaneously, implement cfg for ControlNet constrains.
-            e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_in, t_in, c_in, **kwargs).chunk(3, dim=0)   # self.model.apply_model
+            e_t_uncond, e_t_uncond_prompt, e_t = self.model.apply_model(x_noisy=x_in, t=t_in, cond=c_in, **kwargs).chunk(3, dim=0)   # self.model.apply_model
             e_t = e_t_uncond + image_guidance_scale * (e_t_uncond_prompt - e_t_uncond) + prompt_guidance_scale * (e_t - e_t_uncond_prompt)
-            if self.model.apply_model.diffusion_model.in_channels == 4:
-                e_t, _ = e_t.chunk(2,dim=2)
+            # if self.model.apply_model.diffusion_model.in_channels == 4:
+            #     e_t, _ = e_t.chunk(2,dim=2)
             # print(e_t.shape)
 
         if score_corrector is not None:
