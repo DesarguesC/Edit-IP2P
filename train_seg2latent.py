@@ -22,14 +22,12 @@ from stable_diffusion.ldm.util_ddim import load_model_from_config
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 
-
-
-def mkdir(path: str) -> str:
+def mkdir(path: str, rank) -> str:
     if not osp.exists(path):
         os.makedirs(path)
     base_count = len(os.listdir(path)) if osp.exists(path) else 0
-    path = osp.join(path, f'{base_count:05}')
-    
+    path = osp.join(path, f'{base_count:05}--rank:{rank}')
+
     while True:
         """
             Concurrency:
@@ -40,7 +38,7 @@ def mkdir(path: str) -> str:
             break
         else:
             base_count += 1
-            
+
     os.makedirs(path, exist_ok=True)
     os.makedirs(osp.join(path, 'models'))
     os.makedirs(osp.join(path, 'training_states'))
@@ -194,11 +192,10 @@ def main():
     log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     
-    print_fq = 10
-    save_fq = 50
+    print_fq = 3
+    save_fq = 3
     N = opt.epochs
     
-    local_rank = 0
     device_nums = 2
     device = 'cuda'
     
@@ -322,55 +319,58 @@ def main():
             kl_loss_sum.backward()
             optimizer.step()
 
-            if current_iter%print_fq == 0:
-                loss_info = '[%d|%d], KL Divergence Loss: %.6f' % (epoch+1, N, kl_loss_sum)
+            if current_iter % opt.print_fq == 0:
+                loss_info = 'current_iter: %d \nEPOCH: [%d|%d], L2 Loss in Diffusion Steps: %.6f' % (current_iter, epoch + 1, opt.epochs, l_pixel)
                 logger.info(loss_info)
+                logger.info(loss_dict)
 
                 # save checkpoint
-                rank, _ = get_dist_info()
+                rank = opt.local_rank
                 logger.info(f'rank = {rank}')
-        if (rank == 0) and ((epoch + 1) % save_fq == 0):
-            save_filename = f'model_epo_{epoch + 1}.pth'
-            save_path = os.path.join(experiments_root, 'models', save_filename)
-            save_dict = {}
-            pm_bare = get_bare_model(pm_)
-            state_dict = pm_bare.state_dict()
-            for key, param in state_dict.items():
-                if key.startswith('module.'):  # remove unnecessary 'module.'
-                    key = key[7:]
-                save_dict[key] = param.cpu()
+            
+            logger.info(f'Current iter done. Iter Num: {current_iter}')
+            if (rank == 0) and ((current_iter + 1) % opt.save_fq == 0):
+                save_filename = f'model_iter_{current_iter + 1}.pth'
+                save_path = os.path.join(experiments_root, 'models', save_filename)
+                save_dict = {}
+                ad_bare = get_bare_model(LatentSegAdapter)
+                state_dict = ad_bare.state_dict()
+                for key, param in state_dict.items():
+                    if key.startswith('module.'):  # remove unnecessary 'module.'
+                        key = key[7:]
+                    save_dict[key] = param.cpu()
 
-            logger.info(f'saving pth to path: {save_path}')
-            torch.save(save_dict, save_path)
-            # save state
+                logger.info(f'saving pth to path: {save_path}')
+                torch.save(save_dict, save_path)
+                # save state
 
-            state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
-            save_filename = f'{current_iter + 1}.state'
-            save_path = os.path.join(experiments_root, 'training_states', save_filename)
-            logger.info(f'saving state to path: {save_path}')
-            torch.save(state, save_path)
-    rank, _ = get_dist_info()
-    logger.info(f'saving: rank = {rank}')
+                state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
+                save_filename = f'{current_iter + 1}.state'
+                save_path = os.path.join(experiments_root, 'training_states', save_filename)
+                logger.info(f'saving state to path: {save_path}')
+                torch.save(state, save_path)
     
-    save_filename = f'model_epo_final_rank({rank}).pth'
-    save_path = os.path.join(experiments_root, 'models', save_filename)
-    save_dict = {}
-    pm_bare = get_bare_model(pm_)
-    state_dict = pm_bare.state_dict()
-    for key, param in state_dict.items():
-        if key.startswith('module.'):  # remove unnecessary 'module.'
-            key = key[7:]
-        save_dict[key] = param.cpu()
+    
+    if (rank == 0):
+        save_filename = f'model_epo_final.pth'
+        save_path = os.path.join(experiments_root, 'models', save_filename)
+        save_dict = {}
+        ad_bare = get_bare_model(LatentSegAdapter)
+        state_dict = ad_bare.state_dict()
+        for key, param in state_dict.items():
+            if key.startswith('module.'):  # remove unnecessary 'module.'
+                key = key[7:]
+            save_dict[key] = param.cpu()
 
-    logger.info(f'saving pth to path: {save_path}')
-    torch.save(save_dict, save_path)
-    # save state
+        logger.info(f'saving pth to path: {save_path}')
+        torch.save(save_dict, save_path)
+        # save state
 
-    state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
-    save_filename = f'{current_iter + 1}.state'
-    save_path = os.path.join(experiments_root, 'training_states', save_filename)
-    logger.info(f'saving state to path: {save_path}')
-    torch.save(state, save_path)
+        state = {'epoch': epoch, 'iter': current_iter + 1, 'optimizers': optimizer.state_dict()}
+        save_filename = f'{current_iter + 1}.state'
+        save_path = os.path.join(experiments_root, 'training_states', save_filename)
+        logger.info(f'saving state to path: {save_path}')
+        torch.save(state, save_path)
 
     return
 
