@@ -4,7 +4,8 @@ import argparse
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.nn.functional import kl_div
-
+import torch.multiprocessing as mp
+import torch.distributed as dist
 sys.path.append('../')
 sys.path.append('./stable_diffusion')
 
@@ -173,25 +174,55 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default=0,
         help="local rank",
     )
-
-    
+    parser.add_argument(
+        '--print_fq',
+        type=int,
+        default=50,
+        help='print frequency'
+    )
+    parser.add_argument(
+        '--save_fq',
+        type=int,
+        default=50,
+        help='save frequency'
+    )
+    parser.add_argument(
+        '--name',
+        type=str,
+        default='exp-seg2latent',
+        help='folder base name'
+    )
+    parser.add_argument(
+        '--single_gpu',
+        type=str2bool,
+        default=False,
+        help='whether to use multi gpu'
+    )
+    parser.add_argument(
+        '--num_workers',
+        type=int,
+        default=8,
+        help='thread number'
+    )
+    parser.add_argument(
+        '--image_folder',
+        type=str,
+        default='../autodl-tmp/test',
+        help='dataset path'
+    )
 
     return parser.parse_args()
 
 
 def main():
     opt = get_base_argument_parser()
-    base_count = 0
-    single_gpu = False
-    config = './configs/ip2p-ddim.yaml',
-    name = 'seg'
+    opt.single_gpu = False
     learning_rate = 1.0e-04
     bsize = opt.bsize
-    num_workers = 25
     experiments_root = './experiments/'
     
     experiments_root = mkdir(experiments_root)
-    log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
+    log_file = osp.join(experiments_root, f"train_{opt.name}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     
     print_fq = 10
@@ -202,10 +233,7 @@ def main():
     device_nums = 2
     device = 'cuda'
     
-    if not single_gpu:
-        
-        import torch.multiprocessing as mp
-        import torch.distributed as dist
+    if not opt.single_gpu:
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method('spawn')
         rank = opt.local_rank
@@ -229,22 +257,22 @@ def main():
     
     # device = torch.device("cuda:0,1,2" if torch.cuda.is_available() else "cpu")
     # torch.nn.parallel.DistributedDataParallel
-    if not single_gpu:
+    if not opt.single_gpu:
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[local_rank], output_device=local_rank)
         # encoder_model.to(device)
         
-    if not single_gpu:
+    if not opt.single_gpu:
         sam_model = torch.nn.parallel.DistributedDataParallel(
             sam_model,
             device_ids=[local_rank], output_device=local_rank)
         # sam_model.to(device)
-    mask_generator = SamAutomaticMaskGenerator(sam_model if single_gpu else sam_model.module).generate
+    mask_generator = SamAutomaticMaskGenerator(sam_model if opt.single_gpu else sam_model.module).generate
     data_creator_params = {
         # 'image_folder': '../test-dataset/',
-        'image_folder': (str)(os.environ['IMAGE_FOLDER']),
-        'sd_model': model if single_gpu else model.module,
+        'image_folder': opt.image_folder,
+        'sd_model': model if opt.single_gpu else model.module,
         'sam': mask_generator,
         'batch_size': 1,
         'downsample_factor': 8,
@@ -263,28 +291,28 @@ def main():
         data_creator.MakeData()
     print(f'Randomly loading data with length: {len(data_creator)}')
     
-    train_sampler = None if single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
+    train_sampler = None if opt.single_gpu else torch.utils.data.distributed.DistributedSampler(data_creator)
 
     train_dataloader = tqdm(DataLoader(dataset=data_creator, batch_size=bsize, shuffle=True, drop_last=True), \
                             desc='Procedure', total=len(data_creator)) \
-        if single_gpu else torch.utils.data.DataLoader(
+        if opt.single_gpu else torch.utils.data.DataLoader(
                                 data_creator,
                                 batch_size=bsize,
                                 shuffle=(train_sampler is None),
-                                num_workers=num_workers,
+                                num_workers=opt.num_workers,
                                 pin_memory=True,
                                 drop_last=True,
                                 sampler=train_sampler)
     
     pm_ = PM().to(device)
-    pm_ = pm_ if single_gpu else torch.nn.parallel.DistributedDataParallel(
+    pm_ = pm_ if opt.single_gpu else torch.nn.parallel.DistributedDataParallel(
         pm_,
         device_ids=[local_rank],
         output_device=local_rank)
 
 
     # optimizer
-    params = list(pm_.parameters() if single_gpu else pm_.module.parameters())
+    params = list(pm_.parameters() if opt.single_gpu else pm_.module.parameters())
     optimizer = torch.optim.AdamW(params, lr=learning_rate)
 
     current_iter = 0
@@ -294,7 +322,7 @@ def main():
     for epoch in range(N):
         # train_dataloader.sampler.set_epoch(epoch)
         # train
-        if not single_gpu: train_dataloader.sampler.set_epoch(epoch)
+        if not opt.single_gpu: train_dataloader.sampler.set_epoch(epoch)
         logger.info(f'Current Training Procedure: [{epoch+1}|{N}]')
         
         for _, data in enumerate(train_dataloader):
@@ -317,7 +345,7 @@ def main():
             optimizer.zero_grad()
             pm_.zero_grad()
 
-            pred = pm_(cin) if single_gpu else pm_.module(cin)
+            pred = pm_(cin) if opt.single_gpu else pm_.module(cin)
             kl_loss_sum = kl_div(pred, cout, reduction='sum', log_target=True)
             kl_loss_sum.backward()
             optimizer.step()
