@@ -1,5 +1,6 @@
 import torch, cv2, os, sys
 import numpy as np
+import argparse
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torch.nn.functional import kl_div
@@ -46,17 +47,146 @@ def mkdir(path: str) -> str:
     os.makedirs(osp.join(path, 'visualization'))
     return path
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+def get_base_argument_parser() -> argparse.ArgumentParser:
+    """get the base argument parser for inference scripts"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--outdir',
+        type=str,
+        help='dir to write results to',
+        default='./models/ori_out/',
+    )
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='./configs/ip2p-ddim.yaml',
+        help='train / inference configs'
+    )
+    parser.add_argument(
+        '--use_neg_prompt',
+        type=str2bool,
+        default=1,
+        help='whether to use default negative prompt',
+    )
 
 
+    parser.add_argument(
+        '--cond_inp_type',
+        type=str,
+        default='image',
+        help='the type of the input condition image, take depth T2I as example, the input can be raw image, '
+        'which depth will be calculated, or the input can be a directly a depth map image',
+    )
+
+    parser.add_argument(
+        '--steps',
+        type=int,
+        default=50,
+        help='number of sampling steps',
+    )
+
+    parser.add_argument(
+        '--vae_ckpt',
+        type=str,
+        default=None,
+        help='vae checkpoint, anime SD models usually have seperate vae ckpt that need to be loaded',
+    )
+
+    parser.add_argument(
+        '--adapter_ckpt',
+        type=str,
+        default=None,
+        help='path to checkpoint of adapter',
+    )
+
+    parser.add_argument(
+        '--max_resolution',
+        type=float,
+        default=512 * 512,
+        help='max image height * width, only for computer with limited vram',
+    )
+
+    parser.add_argument(
+        '--resize_short_edge',
+        type=int,
+        default=None,
+        help='resize short edge of the input image, if this arg is set, max_resolution will not be used',
+    )
+    parser.add_argument(
+        '--cond_tau',
+        type=float,
+        default=1.0,
+        help='timestamp parameter that determines until which step the adapter is applied, '
+        'similar as Prompt-to-Prompt tau')
+
+    parser.add_argument(
+        '--cond_weight',
+        type=float,
+        default=1.0,
+        help='the adapter features are multiplied by the cond_weight. The larger the cond_weight, the more aligned '
+        'the generated image and condition will be, but the generated quality may be reduced',
+    )
+    
+    parser.add_argument(
+        '--bsize',
+        type=int,
+        default=32,
+        help='batch size'
+    )
+    parser.add_argument(
+        "--H",
+        type=int,
+        default=512 * 2,            # use cat-control, cat at channels -> 2 * 512
+        help="image height, in pixel space",
+    )
+    parser.add_argument(
+        "--W",
+        type=int,
+        default=512,
+        help="image width, in pixel space",
+    )
+    parser.add_argument(
+        "--C",
+        type=int,
+        default=4,
+        help="latent channels",
+    )
+    parser.add_argument(
+        "--f",
+        type=int,
+        default=8,
+        help="downsampling factor",
+    )
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=0,
+        help="local rank",
+    )
+
+    
+
+    return parser.parse_args()
 
 
 def main():
+    opt = get_base_argument_parser()
     base_count = 0
     single_gpu = False
     config = './configs/ip2p-ddim.yaml',
     name = 'seg'
     learning_rate = 1.0e-04
-    bsize = (int)(os.environ['BSIZE'])
+    bsize = opt.bsize
     num_workers = 25
     experiments_root = './experiments/'
     
@@ -66,7 +196,7 @@ def main():
     
     print_fq = 10
     save_fq = 50
-    N = (int)(os.environ['NUM_EPOCH'])
+    N = opt.epochs
     
     local_rank = 0
     device_nums = 2
@@ -78,7 +208,7 @@ def main():
         import torch.distributed as dist
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method('spawn')
-        rank = int(os.environ['RANK'])
+        rank = opt.local_rank
         num_gpus = torch.cuda.device_count()
         torch.cuda.set_device(rank % num_gpus)
         dist.init_process_group(backend='nccl')
