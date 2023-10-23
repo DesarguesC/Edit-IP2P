@@ -1398,7 +1398,10 @@ class DiffusionWrapper(pl.LightningModule):
             adapter = kwargs['adapter']
             use_time_emb = kwargs['use_time_emb']
             
-            ad_input = torch.cat([proj_cond + c_concat, seg_cond_latent + c_concat], dim=1).to(self.device)
+            print(f'x.shape = {x.shape}, c_concat.shape = {c_concat.shape}')
+            # xc = torch.cat([x] + [c_concat], dim = 1)
+            
+            ad_input = torch.cat([proj_cond, c_concat, seg_cond_latent, c_concat], dim=1).to(self.device)
 
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
@@ -1425,7 +1428,7 @@ class DiffusionWrapper(pl.LightningModule):
             adapter = kwargs['adapter']
             use_time_emb = kwargs['use_time_emb']
             
-            ad_input = torch.cat([proj_cond + c_concat, seg_cond_latent + c_concat], dim=1).to(self.device)
+            ad_input = torch.cat([proj_cond, seg_cond_latent], dim=1).to(self.device)
 
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
