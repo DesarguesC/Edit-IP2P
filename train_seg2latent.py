@@ -179,17 +179,17 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
 
 def main():
     opt = get_base_argument_parser()
-    base_count = 0
     single_gpu = False
     config = './configs/ip2p-ddim.yaml',
     name = 'seg'
     learning_rate = 1.0e-04
     bsize = opt.bsize
     num_workers = 25
-    experiments_root = './experiments/'
     
-    experiments_root = mkdir(experiments_root)
-    log_file = osp.join(experiments_root, f"train_{name}_{get_time_str()}.log")
+    experiments_root = './experiments/'
+    opt.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    experiments_root = mkdir(experiments_root, opt.local_rank)
+    log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     
     print_fq = 3
