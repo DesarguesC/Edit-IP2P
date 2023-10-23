@@ -114,7 +114,12 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default=512 * 512,
         help='max image height * width, only for computer with limited vram',
     )
-
+    parser.add_argument(
+        '--epochs',
+        type=int,
+        default=10000,
+        help='number of total training epochs'
+    )
     parser.add_argument(
         '--resize_short_edge',
         type=int,
@@ -218,29 +223,23 @@ def main():
     opt.single_gpu = False
     learning_rate = 1.0e-04
     bsize = opt.bsize
-    experiments_root = './experiments/'
+    experiments_root = './experiments-seg2latent/'
     
-    experiments_root = mkdir(experiments_root)
+    experiments_root = mkdir(experiments_root, opt.local_rank)
     log_file = osp.join(experiments_root, f"train_{opt.name}.log")
-
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-    
-    print_fq = 3
-    save_fq = 3
     N = opt.epochs
     
-    device_nums = 2
     device = 'cuda'
     
     if not opt.single_gpu:
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method('spawn')
-        rank = opt.local_rank
-        num_gpus = torch.cuda.device_count()
-        torch.cuda.set_device(rank % num_gpus)
-        dist.init_process_group(backend='nccl')
+        dist.init_process_group(backend='nccl', rank=opt.local_rank, init_method='env://')
+        torch.cuda.set_device(opt.local_rank)
         dist.barrier()
         torch.backends.cudnn.benchmark = True
+        print(f'current rank: {opt.local_rank}')
         
     
     loader_params = {
@@ -259,13 +258,13 @@ def main():
     if not opt.single_gpu:
         model = torch.nn.parallel.DistributedDataParallel(
             model,
-            device_ids=[local_rank], output_device=local_rank)
+            device_ids=[opt.local_rank], output_device=opt.local_rank)
         # encoder_model.to(device)
         
     if not opt.single_gpu:
         sam_model = torch.nn.parallel.DistributedDataParallel(
             sam_model,
-            device_ids=[local_rank], output_device=local_rank)
+            device_ids=[opt.local_rank], output_device=opt.local_rank)
         # sam_model.to(device)
     mask_generator = SamAutomaticMaskGenerator(sam_model if opt.single_gpu else sam_model.module).generate
     data_creator_params = {
@@ -306,8 +305,8 @@ def main():
     pm_ = PM().to(device)
     pm_ = pm_ if opt.single_gpu else torch.nn.parallel.DistributedDataParallel(
         pm_,
-        device_ids=[local_rank],
-        output_device=local_rank)
+        device_ids=[opt.local_rank],
+        output_device=opt.local_rank)
 
 
     # optimizer

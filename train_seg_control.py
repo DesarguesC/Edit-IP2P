@@ -230,25 +230,21 @@ def main():
     experiments_root = mkdir(experiments_root, opt.local_rank)
     log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
-    
+    device = 'cuda'
     
     
     if not opt.use_single_gpu:
         # lauch multi-GPU training process
         if mp.get_start_method(allow_none=True) is None:
             mp.set_start_method('spawn')
-        rank = opt.local_rank
-        num_gpus = torch.cuda.device_count()
-        dist.init_process_group(backend='nccl', rank=rank, init_method='env://')
-        torch.cuda.set_device(rank % num_gpus)
+        dist.init_process_group(backend='nccl', rank=opt.local_rank, init_method='env://')
+        torch.cuda.set_device(opt.local_rank)
         dist.barrier()
         torch.backends.cudnn.benchmark = True
-        device = torch.device("cuda", rank)
-        
-        print(f'current rank: {rank}')
+        print(f'current rank: {opt.local_rank}')
         
         
-    sd_model, sam_model, pm_model, configs = load_inference_train(opt, opt.device)
+    sd_model, sam_model, pm_model, configs = load_inference_train(opt, device)
     print(f'sd-{opt.local_rank}')
     if not opt.use_single_gpu:
         sd_model = torch.nn.parallel.DistributedDataParallel(
@@ -258,7 +254,7 @@ def main():
     
     
     LatentSegAdapter = Adapter(cin=16*16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, \
-                               use_conv=False, use_time=opt.adapter_time_emb).train().to(opt.device)
+                               use_conv=False, use_time=opt.adapter_time_emb).train().to(device)
         
     
     

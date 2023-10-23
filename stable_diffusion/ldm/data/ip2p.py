@@ -167,7 +167,7 @@ class Ip2pDatasets(ProjectionTo):
 
         cin_img, cout_img = self.load_img(cin_img_path, Train=True, max_resolution=self.max_resolution), \
                                             self.load_img(cout_img_path, Train=True, max_resolution=self.max_resolution)
-        # (np.ndarray, np.ndarray)
-
-        # return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt, 'seg_cond': seg_cond, 'seg_cond_latent': seg_cond_latent}
+        
+        
+        
         return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt}
