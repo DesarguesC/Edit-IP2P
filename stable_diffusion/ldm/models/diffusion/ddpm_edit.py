@@ -1397,35 +1397,14 @@ class DiffusionWrapper(pl.LightningModule):
             out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
         
         elif self.conditioning_key == 'cat-control':
-#             assert not isinstance(x, list) and isinstance(c_concat, list) and isinstance(c_crossattn, list), \
-#             f'Type not match: type(x) = {type(x)}, type(c_concat) = {type(c_concat)}, type(c_crossattn) = {type(c_crossattn)}'
-#             try:
-                
-#                 seg_cond_latent = kwargs['seg_cond_latent']
-#                 pm_model = kwargs['projection']
-#                 adapter = kwargs['adapter']
-#                 assert seg_cond_latent.shape == x.shape, f'inequal shape: seg_cond_latent.shape = {seg_cond_latent.shape}, x.shape = {x.shape}'
-#             except Exception as err:
-#                 assert 0, f'{err.__str__}'
-#             assert c_concat is not None and c_crossattn is not None, f'c_concat = {c_concat}, c_crossattn = {c_crossattn}'
-#             proj_cond = pm_model(seg_cond_latent).to(self.device)
             
-#             print(f'proj_cond.shape = {proj_cond.shape}, seg_cond_latent.shape = {seg_cond_latent.shape}, c_crossattn[0].shape = {c_crossattn[0].shape}')
-#             kwargs['feature_cond'] = adapter(torch.cat([proj_cond, seg_cond_latent] + c_crossattn * 2, dim=1))
-#             x = torch.cat([x] * 2, dim=2)
-#             cc = torch.cat([c_crossattn, c_concat], dim=2)
-#             # TODO: keep batch num, add on H param
-#             out = self.diffusion_model(x, t, context=cc, **kwargs)
-
-#             # use Noise created on diffusion training step, cat Noise and my Inputs ???
-#             #                                       I also adopt it in inference step
             seg_cond_latent = kwargs['seg_cond_latent']
             pm_model = kwargs['projection']
             adapter = kwargs['adapter']
             use_time_emb = kwargs['time_emb']
 
             proj_cond = pm_model(seg_cond_latent).to(self.device)
-            ad_input = torch.cat([torch.cat([proj_cond + c_concat[i], seg_cond_latent + c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
+            ad_input = torch.cat([torch.cat([proj_cond, seg_cond_latent, c_concat[i], c_concat[i]], dim=1) for i in range(len(c_concat))], dim=0).to(self.device)
 
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
