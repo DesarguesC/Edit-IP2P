@@ -203,13 +203,19 @@ def parsr_args():
         default='./checkpoints/ls_model.pth',
         help='LatentSegmentAdapter model path'
     )
+    parser.add_argument(
+        '--root',
+        type=str,
+        default='./exp-segControlNet/',
+        help='experiments root folder name'
+    )
     opt = parser.parse_args()
     return opt
 
 def main():
     opt = parsr_args()
     opt.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    experiments_root = './exp-segControlNet/'
+    experiments_root = opt.root
     experiments_root = mkdir(experiments_root, opt.local_rank)
     log_file = osp.join(experiments_root, f"train_{opt.name}_{get_time_str()}.log")
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
@@ -355,15 +361,15 @@ def main():
                 del cin_pic 
                 del cout_pic
                 seg_cond.to(opt.device)
-                seg_cond_latent = seg2latent(seg_cond, sd_bare, opt.device)
-                seg_cond_latent = sl2latent(seg_cond_latent, pm_bare, opt.device)
+                seg_cond = seg2latent(seg_cond, sd_bare, opt.device)
+                pm_cond = sl2latent(seg_cond, pm_bare, opt.device)
 
             assert z_0.shape == z_T.shape, f'z0.shape = {z_0.shape}, zT.shape = {z_T.shape}'
 
             optimizer.zero_grad()
             LatentSegAdapter.zero_grad()
-
-            l_pixel, loss_dict = sd_model(z_T, c=[[c], [z_0], [seg_cond], [seg_cond_latent]], **Models)
+                                                # [prompt, init-latent, seg-latent, pm_cond]
+            l_pixel, loss_dict = sd_model(z_T, c=[[c], [z_0], [seg_cond], [pm_cond]], **Models)
             l_pixel.backward()
             optimizer.step()
 
@@ -371,13 +377,9 @@ def main():
                 loss_info = 'current_iter: %d \nEPOCH: [%d|%d], L2 Loss in Diffusion Steps: %.6f' % (current_iter, epoch + 1, opt.epochs, l_pixel)
                 logger.info(loss_info)
                 logger.info(loss_dict)
-
-                # save checkpoint
-                rank = opt.local_rank
-                logger.info(f'rank = {rank}')
             
             logger.info(f'Current iter done. Iter Num: {current_iter}')
-            if (rank == 0) and ((current_iter + 1) % opt.save_fq == 0):
+            if (opt.local_rank == 0) and ((current_iter + 1) % opt.save_fq == 0):
                 save_filename = f'model_iter_{current_iter + 1}.pth'
                 save_path = os.path.join(experiments_root, 'models', save_filename)
                 save_dict = {}
@@ -398,7 +400,7 @@ def main():
                 logger.info(f'saving state to path: {save_path}')
                 torch.save(state, save_path)
 
-    if (rank == 0):
+    if (opt.local_rank == 0):
         save_filename = f'model_epo_final.pth'
         save_path = os.path.join(experiments_root, 'models', save_filename)
         save_dict = {}
