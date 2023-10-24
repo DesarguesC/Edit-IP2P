@@ -143,7 +143,8 @@ class Ip2pDatasets(ProjectionTo):
         assert self.total_data_path_list != None, 'No Data Add'
         for u in self.total_data_path_list:
             assert isinstance(u, dict)
-            
+        return
+    
         print(len(self.total_data_path_list))
         reading_path = tqdm(self.total_data_path_list, desc=f'Encoding Procedure: ', total=len(self.total_data_path_list))
 
@@ -196,27 +197,27 @@ class Ip2pDatasets(ProjectionTo):
     
 
     def __len__(self):
-        return len(self.cin_cout_list)
+        return len(self.total_data_path_list)
 
     @torch.no_grad()
     def __getitem__(self, item):
-#         item_ = self.total_data_path_list[item]
-#         i = 0
-#         while(i==0):
-#             try:
-#                 cin_img_path, cout_img_path, edit_prompt = item_['0'], item_['1'], item_['edit-prompt']
-#                 i = 1
-#             except Exception as err:
-#                 print(err)
-#                 i = 0
-#                 item_ = self.total_data_path_list[(item+randint(0,1000))%len(self)]
+        item_ = self.total_data_path_list[item]
+        i = 0
+        while(i==0):
+            try:
+                cin_img_path, cout_img_path, edit_prompt = item_['0'], item_['1'], item_['edit-prompt']
+                i = 1
+            except Exception as err:
+                print(err)
+                i = 0
+                item_ = self.total_data_path_list[(item+randint(0,1000))%len(self)]
             
             
-#         assert osp.isfile(cin_img_path) or not osp.exists(cin_img_path), f'\'0\' -> not a file or file not exists'
-#         assert osp.isfile(cout_img_path) or not osp.exists(cout_img_path), f'\'1\' -> not a file or file not exists'
+        assert osp.isfile(cin_img_path) or not osp.exists(cin_img_path), f'\'0\' -> not a file or file not exists'
+        assert osp.isfile(cout_img_path) or not osp.exists(cout_img_path), f'\'1\' -> not a file or file not exists'
 
-#         cin_img, cout_img = self.load_img(cin_img_path, Train=True, max_resolution=self.max_resolution), \
-#                                             self.load_img(cout_img_path, Train=True, max_resolution=self.max_resolution)
+        cin_img, cout_img = self.load_img(cin_img_path, Train=True, max_resolution=self.max_resolution), \
+                                            self.load_img(cout_img_path, Train=True, max_resolution=self.max_resolution)
         
-#         return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt}
-        return self.cin_cout_list[item]
+        return {'cin': cin_img, 'cout': cout_img, 'edit': edit_prompt}
+        # return self.cin_cout_list[item]

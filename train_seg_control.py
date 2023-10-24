@@ -333,16 +333,16 @@ def main():
         for _, data in enumerate(train_dataloader):
             current_iter += 1
         
-#             cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
-#             u = randint(0,100)
-#             if u < 5:
-#                 cout_pic = cin_pic
-#                 edit_prompt = ["do not modify"] * cin_pic.shape[0]
-#             elif u < 10:
-#                 cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
-#             elif u < 15:
-#                 cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
-#                 edit_prompt = ["do not modify"] * cin_pic.shape[0]            
+            cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
+            u = randint(0,100)
+            if u < 5:
+                cout_pic = cin_pic
+                edit_prompt = ["do not modify"] * cin_pic.shape[0]
+            elif u < 10:
+                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
+            elif u < 15:
+                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
+                edit_prompt = ["do not modify"] * cin_pic.shape[0]            
             
             # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # low time cost tested
@@ -352,18 +352,18 @@ def main():
                 # cin_pic.shape = [8, 512, 512, 3]
                 # print(cin_pic.shape)
                 
-                # seg_cond = img2seg(cin_pic, mask_generator, opt.device)
-                # c = sd_bare.get_learned_conditioning(edit_prompt)
-                # z_0 = img2latent(cin_pic, sd_bare, opt.device)
-                # z_T = img2latent(cout_pic, sd_bare, opt.device)
-                # del cin_pic 
-                # del cout_pic
-                # seg_cond.to(opt.device)
-                # seg_cond = seg2latent(seg_cond, sd_bare, opt.device)
-                # pm_cond = sl2latent(seg_cond, pm_bare, opt.device)
+                seg_cond = img2seg(cin_pic, mask_generator, opt.device)
+                c = sd_bare.get_learned_conditioning(edit_prompt)
+                z_0 = img2latent(cin_pic, sd_bare, opt.device)
+                z_T = img2latent(cout_pic, sd_bare, opt.device)
+                del cin_pic 
+                del cout_pic
+                seg_cond.to(opt.device)
+                seg_cond = seg2latent(seg_cond, sd_bare, opt.device)
+                pm_cond = sl2latent(seg_cond, pm_bare, opt.device)
                 
                 
-                c, z_0, z_T, seg_cond, pm_cond = data['c'], data['z_0'], data['z_T'], data['seg_cond'], data['pm_cond']
+                # c, z_0, z_T, seg_cond, pm_cond = data['c'], data['z_0'], data['z_T'], data['seg_cond'], data['pm_cond']
                 
 
             assert z_0.shape == z_T.shape, f'z0.shape = {z_0.shape}, zT.shape = {z_T.shape}'
