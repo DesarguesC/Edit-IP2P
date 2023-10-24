@@ -257,7 +257,7 @@ def main():
         LatentSegAdapter = Adapter(cin=16*16, channels=[64, 128, 128, 512], nums_rb=2, ksize=1, sk=True, \
                                       use_conv=True, use_time=opt.adapter_time_emb).train.to(device)
     elif opt.Type == 'V':
-        LatentSegAdapter = Adapter(cin=16*16, channels=[256, 128, 64, 64], nums_rb=2, ksize=1, sk=True, \
+        LatentSegAdapter = Adapter(cin=8*16, channels=[256, 128, 64, 64], nums_rb=2, ksize=1, sk=True, \
                                   use_conv=True, use_time=opt.adapter_time_emb).train.to(device)
     
     
