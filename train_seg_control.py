@@ -267,8 +267,10 @@ def main():
             pm_model,
             device_ids=[opt.local_rank], output_device=opt.local_rank)
         torch.backends.cudnn.benchmark = True
+        
+    sd_bare, sam_bare, pm_bare = get_bare_model(sd_model), get_bare_model(sam_model), get_bare_model(pm_model)
     
-    mask_generator = SamAutomaticMaskGenerator(sam_model if opt.use_single_gpu else sam_model.module).generate
+    mask_generator = SamAutomaticMaskGenerator(sam_bare).generate
     data_params = {
         'image_folder': opt.image_folder,
         'sd_model': sd_model,
@@ -279,8 +281,10 @@ def main():
         'data_pro': opt.data_pro / 10.
     }
     data_creator = Ip2pDatasets(**data_params)
+    
     with torch.no_grad():
-        data_creator.MakeData(opt.max_resolution)
+        data_creator.MakeData(sd_bare, mask_generator, pm_bare, opt.max_resolution, opt.device)
+        
     print(f'Randomly loading data with length: {len(data_creator)}')
     
     
@@ -316,7 +320,7 @@ def main():
         sampler=train_sampler)
     print('sampler init time cost: %.6f'%(time.time() - start_time))
     
-    sd_bare, sam_bare, pm_bare = get_bare_model(sd_model), get_bare_model(sam_model), get_bare_model(pm_model)
+    
     
     
     
@@ -328,24 +332,17 @@ def main():
 
         for _, data in enumerate(train_dataloader):
             current_iter += 1
-            """
-                data = {
-                    'cin': cin_img, 
-                    'cout': cout_img, 
-                    'edit': edit_prompt, 
-                    'seg_cond': seg_cond
-                }
-            """
-            cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
-            u = randint(0,100)
-            if u < 5:
-                cout_pic = cin_pic
-                edit_prompt = ["do not modify"] * cin_pic.shape[0]
-            elif u < 10:
-                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
-            elif u < 15:
-                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
-                edit_prompt = ["do not modify"] * cin_pic.shape[0]            
+        
+#             cin_pic, cout_pic, edit_prompt = data['cin'], data['cout'], data['edit']
+#             u = randint(0,100)
+#             if u < 5:
+#                 cout_pic = cin_pic
+#                 edit_prompt = ["do not modify"] * cin_pic.shape[0]
+#             elif u < 10:
+#                 cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
+#             elif u < 15:
+#                 cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
+#                 edit_prompt = ["do not modify"] * cin_pic.shape[0]            
             
             # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']
             # low time cost tested
@@ -353,16 +350,21 @@ def main():
             with torch.no_grad():
                 # cond = [prompt_cond, init_latent, seg_cond, seg_cond_latent]
                 # cin_pic.shape = [8, 512, 512, 3]
-                print(cin_pic.shape)
-                seg_cond = img2seg(cin_pic, mask_generator, opt.device)
-                c = sd_bare.get_learned_conditioning(edit_prompt)
-                z_0 = img2latent(cin_pic, sd_bare, opt.device)
-                z_T = img2latent(cout_pic, sd_bare, opt.device)
-                del cin_pic 
-                del cout_pic
-                seg_cond.to(opt.device)
-                seg_cond = seg2latent(seg_cond, sd_bare, opt.device)
-                pm_cond = sl2latent(seg_cond, pm_bare, opt.device)
+                # print(cin_pic.shape)
+                
+                # seg_cond = img2seg(cin_pic, mask_generator, opt.device)
+                # c = sd_bare.get_learned_conditioning(edit_prompt)
+                # z_0 = img2latent(cin_pic, sd_bare, opt.device)
+                # z_T = img2latent(cout_pic, sd_bare, opt.device)
+                # del cin_pic 
+                # del cout_pic
+                # seg_cond.to(opt.device)
+                # seg_cond = seg2latent(seg_cond, sd_bare, opt.device)
+                # pm_cond = sl2latent(seg_cond, pm_bare, opt.device)
+                
+                
+                c, z_0, z_T, seg_cond, pm_cond = data['c'], data['z_0'], data['z_T'], data['seg_cond'], data['pm_cond']
+                
 
             assert z_0.shape == z_T.shape, f'z0.shape = {z_0.shape}, zT.shape = {z_T.shape}'
 
