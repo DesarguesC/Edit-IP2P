@@ -209,6 +209,12 @@ def parsr_args():
         default='./exp-segControlNet/',
         help='experiments root folder name'
     )
+    parser.add_argument(
+        '--Type',
+        type=str,
+        default='big',
+        help='which adapter to use'
+    )
     opt = parser.parse_args()
     return opt
 
@@ -241,10 +247,20 @@ def main():
             device_ids=[opt.local_rank], output_device=opt.local_rank)
     torch.backends.cudnn.benchmark = True
     
-    
-    LatentSegAdapter = Adapter(cin=16*16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, \
+    if opt.Type == 'big':
+        LatentSegAdapter = Adapter(cin=16*16, channels=[256, 512, 1024, 1024], nums_rb=2, ksize=1, sk=True, \
                                use_conv=False, use_time=opt.adapter_time_emb).train().to(device)
-        
+    elif opt.Type == 'small':
+        LatentSegAdapter = Adapter(cin=16*16, channels=[128, 256, 512, 512], nums_rb=3, ksize=1, sk=True, \
+                                      use_conv=False, use_time=opt.adapter_time_emb).train.to(device)
+    elif opt.Type == 'tiny':
+        LatentSegAdapter = Adapter(cin=16*16, channels=[64, 128, 128, 512], nums_rb=2, ksize=1, sk=True, \
+                                      use_conv=True, use_time=opt.adapter_time_emb).train.to(device)
+    elif opt.Type == 'V':
+        LatentSegAdapter = Adapter(cin=16*16, channels=[256, 128, 64, 64], nums_rb=2, ksize=1, sk=True, \
+                                  use_conv=True, use_time=opt.adapter_time_emb).train.to(device)
+    
+    
     
     if opt.init:
         LatentSegAdapter.load_state_dict(torch.load(opt.ls_path))
