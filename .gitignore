@@ -9,6 +9,8 @@ nlpconnect/vit-gpt2-image-captioning/
 experiments/*
 checkpoints/*
 src/*
+exp/*
+cat-control-exp/*
 Inputs
 Outputs
 

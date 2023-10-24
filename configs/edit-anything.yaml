@@ -17,7 +17,7 @@ model:
     image_size: 16
     channels: 4
     cond_stage_trainable: false   # Note: different from the one we trained before
-    conditioning_key: hybrid
+    conditioning_key: add-control-test
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
     use_ema: true
@@ -36,7 +36,7 @@ model:
       target: stable_diffusion.eldm.cldm.ControlledUnetModel
       params:
         image_size: 32 # unused
-        in_channels: 8
+        in_channels: 4
         out_channels: 4
         model_channels: 320
         attention_resolutions: [ 4, 2, 1 ]

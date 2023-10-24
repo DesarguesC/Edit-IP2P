@@ -244,7 +244,7 @@ def main():
     
     loader_params = {
         'config': './configs/ip2p-ddim.yaml',
-        'sd_ckpt': './checkpoints/v1-5-pruned-emaonly.ckpt',
+        'sd_ckpt': './checkpoints/v1-5-pruned.ckpt',
         'vae_ckpt': None,
         'sam_ckpt': './checkpoints/sam_vit_h_4b8939.pth',
         'sam_type': 'vit_h',

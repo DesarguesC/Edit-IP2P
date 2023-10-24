@@ -45,7 +45,7 @@ class DataCreator():
 
     def printer(self, msg: str = None):
         if msg != None and self.logger != None:
-            self.logger(msg)
+            self.logger.info(msg)
         return
 
     @torch.no_grad()
