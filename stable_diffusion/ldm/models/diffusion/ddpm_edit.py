@@ -1420,7 +1420,7 @@ class DiffusionWrapper(pl.LightningModule):
             
             xc = torch.cat( get_list(x) + get_list(c_concat) , dim = 1)
             
-            ad_input = torch.cat([proj_cond, c_concat, seg_cond, c_concat], dim=1).to(self.device)   # big / small / tiny
+            ad_input = torch.cat([seg_cond + 0.01 * proj_cond, c_concat, seg_cond, c_concat], dim=1).to(self.device)   # big / small / tiny
             # ad_input = torch.cat([proj_cond, seg_cond], dim=1).to(self.device)   # V -> cin = 8 * un^2
 
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding
@@ -1441,7 +1441,7 @@ class DiffusionWrapper(pl.LightningModule):
             
             xc = torch.cat( get_list(x) + get_list(c_concat) , dim = 1)
             
-            ad_input = torch.cat([proj_cond, seg_cond, c_concat, c_concat], dim=1).to(self.device)   # big / small / tiny
+            ad_input = torch.cat([proj_cond, c_concat, seg_cond, c_concat], dim=1).to(self.device)   # big / small / tiny
             # ad_input = torch.cat([proj_cond, seg_cond], dim=1).to(self.device)   # V -> cin = 8 * un^2
 
             feature_list = adapter(ad_input, t=(t if use_time_emb else None))   # no time embedding

@@ -248,7 +248,7 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
         verbose=False,
         conditioning=prompts['cond'],
         unconditional_conditioning=prompts['uncond'],
-        x_T=None,   # TODO: use cin_latent ?
+        x_T=cin_latent,   # TODO: use cin_latent ?
         img_cond=images['cond'],             # cin_image    -> seg_cond image
         img_uncond=images['uncond'],         # random image -> seg_cond image
         prompt_guidance_scale=opt.txt_scale,
