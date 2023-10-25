@@ -183,7 +183,7 @@ def diffusion_inference(opt, sd_model, sampler, sam, pm, adapter, img_path, edit
     # print(f'numpy_cin.shape = {numpy_cin.shape}')
     
     cin_latent = img2latent(numpy_cin, sd_model, device)   #   => to init inference x_T
-    cin_uncond = np.random.randint(low=0, high=256, size=numpy_cin.shape, dtype=np.uint8)
+    cin_uncond = np.zeros_like(size=numpy_cin.shape, dtype=np.uint8)
     cin_uncond_latent = img2latent(cin_uncond, sd_model, device)
     
     

@@ -1434,11 +1434,6 @@ class DiffusionWrapper(pl.LightningModule):
             adapter = kwargs['adapter']
             use_time_emb = kwargs['use_time_emb']
             
-            # print(f'seg_cond.shape = {seg_cond.shape}')
-            # print(f'proj_cond.shape = {proj_cond.shape}')
-            # print(f'c_concat.shape = {c_concat.shape}')
-            # print(f'c_crossattn.shape = {c_crossattn.shape}')
-            
             xc = torch.cat( get_list(x) + get_list(c_concat) , dim = 1)
             
             ad_input = torch.cat([proj_cond, c_concat, seg_cond, c_concat], dim=1).to(self.device)   # big / small / tiny
@@ -1470,12 +1465,17 @@ class DiffusionWrapper(pl.LightningModule):
             adapter = kwargs['adapter']
             use_time_emb = kwargs['use_time_emb']
             
-            ad_input = torch.cat([seg_cond_latent + 0.1 * proj_cond, seg_cond_latent], dim=1).to(self.device)
-
-            feature_list = adapter(ad_input, t=(t if use_time_emb else None), \
-                                   param=torch.norm(proj_cond, p=2, keepdim=False, ))   # no time embedding
+            # print(f'seg_cond_latent.shape = {seg_cond_latent.shape}')
+            # print(f'proj_cond.shape = {proj_cond.shape}')
+            # print(f'c_concat.shape = {c_concat.shape}')
+            # print(f'c_crossattn.shape = {c_crossattn.shape}')
+            xc = torch.cat( get_list(x) + get_list(c_concat) , dim = 1).to(self.device)
+            param = proj_cond ** 2
+            param = 1 / torch.sqrt(param.sum())
+            ad_input = torch.cat([seg_cond_latent, c_concat], dim=1).to(self.device)
+            feature_list = adapter(ad_input, t=(t if use_time_emb else None), param=param)   # use time embedding
             cc = torch.cat((c_crossattn if isinstance(c_crossattn, list) else [c_crossattn]) , dim=0)
-            out = self.diffusion_model(x, t, context=cc, latent_unet_feature=feature_list)   # U-Net
+            out = self.diffusion_model(xc, t, context=cc, latent_unet_feature=feature_list)   # U-Net
 
 
         elif self.conditioning_key == 'adm':
