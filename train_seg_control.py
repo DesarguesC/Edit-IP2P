@@ -252,13 +252,14 @@ def main():
                                use_conv=False, use_time=opt.adapter_time_emb).train().to(device)
     elif opt.Type == 'small':
         LatentSegAdapter = Adapter(cin=16*16, channels=[128, 256, 512, 512], nums_rb=3, ksize=1, sk=True, \
-                                      use_conv=False, use_time=opt.adapter_time_emb).train.to(device)
+                                      use_conv=False, use_time=opt.adapter_time_emb).train().to(device)
     elif opt.Type == 'tiny':
         LatentSegAdapter = Adapter(cin=16*16, channels=[64, 128, 128, 512], nums_rb=2, ksize=1, sk=True, \
-                                      use_conv=True, use_time=opt.adapter_time_emb).train.to(device)
+                                      use_conv=True, use_time=opt.adapter_time_emb).train().to(device)
     elif opt.Type == 'V':
-        LatentSegAdapter = Adapter(cin=8*16, channels=[256, 128, 64, 64], nums_rb=2, ksize=1, sk=True, \
-                                  use_conv=True, use_time=opt.adapter_time_emb).train.to(device)
+        LatentSegAdapter = Adapter(cin=8*16, channels=[256, 512, 512, 1024], nums_rb=2, ksize=1, sk=True, \
+                                  use_conv=True, use_time=opt.adapter_time_emb).train().to(device)
+    # use cond_proj for regularization
     
     
     
@@ -355,9 +356,9 @@ def main():
                 cout_pic = cin_pic
                 edit_prompt = ["do not modify"] * cin_pic.shape[0]
             elif u < 10:
-                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
+                cin_pic = cout_pic = np.zeros_like(size=cin_pic.shape, dtype=np.uint8)
             elif u < 15:
-                cin_pic = cout_pic = np.random.randint(low=0, high=256, size=cin_pic.shape, dtype=np.uint8)
+                cin_pic = cout_pic = np.zeros_like(size=cin_pic.shape, dtype=np.uint8)
                 edit_prompt = ["do not modify"] * cin_pic.shape[0]            
             
             # seg_cond_latent, seg_cond, c = data['seg_cond_latent'], data['seg_cond'], data['edit']

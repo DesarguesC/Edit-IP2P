@@ -144,57 +144,53 @@ class Ip2pDatasets(ProjectionTo):
         for u in self.total_data_path_list:
             assert isinstance(u, dict)
         return
-    
-        print(len(self.total_data_path_list))
-        reading_path = tqdm(self.total_data_path_list, desc=f'Encoding Procedure: ', total=len(self.total_data_path_list))
+#         print(len(self.total_data_path_list))
+#         reading_path = tqdm(self.total_data_path_list, desc=f'Encoding Procedure: ', total=len(self.total_data_path_list))
 
-        for _, dic in enumerate(reading_path):
-            i = 0
-            while(i==0):
-                try:
-                    cin_img_path, cout_img_path, edit_prompt = dic['0'], dic['1'], dic['edit-prompt']
-                    i = 1
-                except Exception as err:
-                    print(err)
-                    i = 0
-                    item_ = self.total_data_path_list[(item+randint(0,1000))%len(self)]
+#         for _, dic in enumerate(reading_path):
+#             i = 0
+#             while(i==0):
+#                 try:
+#                     cin_img_path, cout_img_path, edit_prompt = dic['0'], dic['1'], dic['edit-prompt']
+#                     i = 1
+#                 except Exception as err:
+#                     print(err)
+#                     i = 0
+#                     item_ = self.total_data_path_list[(item+randint(0,1000))%len(self)]
                     
-            assert osp.isfile(cin_img_path) or not osp.exists(cin_img_path), f'\'0\' -> not a file or file not exists'
-            assert osp.isfile(cout_img_path) or not osp.exists(cout_img_path), f'\'1\' -> not a file or file not exists'
+#             assert osp.isfile(cin_img_path) or not osp.exists(cin_img_path), f'\'0\' -> not a file or file not exists'
+#             assert osp.isfile(cout_img_path) or not osp.exists(cout_img_path), f'\'1\' -> not a file or file not exists'
             
-            cin_img, cout_img = self.load_img(cin_img_path, Train=True, max_resolution=self.max_resolution), \
-                                            self.load_img(cout_img_path, Train=True, max_resolution=self.max_resolution)
+#             cin_img, cout_img = self.load_img(cin_img_path, Train=True, max_resolution=self.max_resolution), \
+#                                             self.load_img(cout_img_path, Train=True, max_resolution=self.max_resolution)
             
-            u = randint(0,100)
-            if u < 5:
-                cout_img = cin_img
-                edit_prompt = ["do not modify"] # * cin_pic.shape[0]
-            elif u < 10:
-                cin_img = cout_img = np.random.randint(low=0, high=256, size=cin_img.shape, dtype=np.uint8)
-            elif u < 15:
-                cin_img = cout_img = np.random.randint(low=0, high=256, size=cin_img.shape, dtype=np.uint8)
-                edit_prompt = ["do not modify"] # * cin_pic.shape[0]
+#             u = randint(0,100)
+#             if u < 5:
+#                 cout_img = cin_img
+#                 edit_prompt = ["do not modify"] # * cin_pic.shape[0]
+#             elif u < 10:
+#                 cin_img = cout_img = np.random.randint(low=0, high=256, size=cin_img.shape, dtype=np.uint8)
+#             elif u < 15:
+#                 cin_img = cout_img = np.random.randint(low=0, high=256, size=cin_img.shape, dtype=np.uint8)
+#                 edit_prompt = ["do not modify"] # * cin_pic.shape[0]
             
-            seg_cond = img2seg(cin_img, mask_model, device)
-            c = sd_model.get_learned_conditioning(edit_prompt)
-            z_0 = img2latent(cin_img, sd_model, device)
-            z_T = img2latent(cout_img, sd_model, device)
-            del cin_img 
-            del cout_img
-            seg_cond.to(device)
-            seg_cond = seg2latent(seg_cond, sd_model, device)
-            pm_cond = sl2latent(seg_cond, pm_model, device)
+#             seg_cond = img2seg(cin_img, mask_model, device)
+#             c = sd_model.get_learned_conditioning(edit_prompt)
+#             z_0 = img2latent(cin_img, sd_model, device)
+#             z_T = img2latent(cout_img, sd_model, device)
+#             del cin_img 
+#             del cout_img
+#             seg_cond.to(device)
+#             seg_cond = seg2latent(seg_cond, sd_model, device)
+#             pm_cond = sl2latent(seg_cond, pm_model, device)
             
-            self.cin_cout_list.append({
-                'c':          c,
-                'z_0':        z_0,
-                'z_T':        z_T,
-                'seg_cond':   seg_cond,
-                'pm_cond':    pm_cond
-            })
-            
-            
-    
+#             self.cin_cout_list.append({
+#                 'c':          c,
+#                 'z_0':        z_0,
+#                 'z_T':        z_T,
+#                 'seg_cond':   seg_cond,
+#                 'pm_cond':    pm_cond
+#             })
 
     def __len__(self):
         return len(self.total_data_path_list)

@@ -126,9 +126,9 @@ class Adapter(nn.Module):
         self.conv_in = nn.Conv2d(cin, channels[0], 3, 1, 1)
         
 
-    def forward(self, x, t=None):
+    def forward(self, x, param, t=None):
         # unshuffle
-        
+        # print(f'adapter forward: param = {param}')
         x = self.unshuffle(x)
         # extract features
         features = []
@@ -147,7 +147,7 @@ class Adapter(nn.Module):
             # print(f'after (no fix, input of next emb): t_emb.shape = {t_emb.shape}')
             t_emb_ = fix_shape(t_emb, x) if t != None else None
             features.append(x)
-            t_.append(t_emb_)
+            t_.append(t_emb_ * (1. if param is None else param))
         return features, t_
             
             
